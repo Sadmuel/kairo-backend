@@ -11,8 +11,7 @@ const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
 // Pre-computed bcrypt hash for timing attack prevention
 // This ensures bcrypt.compare always runs, even when the user doesn't exist
-const DUMMY_PASSWORD_HASH =
-  '$2b$10$bDXCh/qqXVqqXNoP33l0heeQpmJkZjUeMxFxeSIr96UPW6bHomIcW';
+const DUMMY_PASSWORD_HASH = '$2b$10$bDXCh/qqXVqqXNoP33l0heeQpmJkZjUeMxFxeSIr96UPW6bHomIcW';
 
 @Injectable()
 export class AuthService {
@@ -33,10 +32,7 @@ export class AuthService {
     // Always compare password to prevent timing attacks
     // If user doesn't exist, compare against dummy hash to maintain consistent timing
     const passwordHash = user?.passwordHash ?? DUMMY_PASSWORD_HASH;
-    const isPasswordValid = await bcrypt.compare(
-      loginDto.password,
-      passwordHash,
-    );
+    const isPasswordValid = await bcrypt.compare(loginDto.password, passwordHash);
 
     if (!user || !isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -61,17 +57,19 @@ export class AuthService {
     }
 
     if (storedToken.expiresAt < new Date()) {
-      await this.prisma.refreshToken.delete({ where: { id: storedToken.id } });
+      await this.prisma.refreshToken.deleteMany({ where: { id: storedToken.id } });
       throw new UnauthorizedException('Refresh token expired');
     }
 
-    // Delete old refresh token (rotation)
-    await this.prisma.refreshToken.delete({ where: { id: storedToken.id } });
+    // Delete old refresh token (rotation) - use deleteMany to handle race conditions
+    const deleted = await this.prisma.refreshToken.deleteMany({ where: { id: storedToken.id } });
 
-    const tokens = await this.generateTokens(
-      storedToken.user.id,
-      storedToken.user.email,
-    );
+    // If token was already deleted by another request, reject this one
+    if (deleted.count === 0) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const tokens = await this.generateTokens(storedToken.user.id, storedToken.user.email);
 
     return {
       ...tokens,
