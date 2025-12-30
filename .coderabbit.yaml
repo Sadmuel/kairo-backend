@@ -4,6 +4,7 @@ language: 'en'
 early_access: false
 
 reviews:
+  profile: 'assertive'
   auto_review:
     enabled: true
     drafts: false
