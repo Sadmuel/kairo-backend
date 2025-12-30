@@ -1,9 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
+import * as crypto from 'crypto';
 import { AppModule } from 'src/app.module';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ThrottlerGuard } from '@nestjs/throttler';
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -157,6 +162,21 @@ describe('AuthController (e2e)', () => {
         .expect(201);
 
       // Try to use the same refresh token again
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken })
+        .expect(401);
+    });
+
+    it('should return 401 for expired refresh token', async () => {
+      // Update the token's expiration date to the past
+      const tokenHash = hashToken(refreshToken);
+      await prisma.refreshToken.update({
+        where: { token: tokenHash },
+        data: { expiresAt: new Date(Date.now() - 1000) }, // Expired 1 second ago
+      });
+
+      // Try to use the expired refresh token
       await request(app.getHttpServer())
         .post('/auth/refresh')
         .send({ refreshToken })
