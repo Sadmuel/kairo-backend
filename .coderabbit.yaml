@@ -1,0 +1,121 @@
+# .coderabbit.yaml - Kairo Backend (NestJS + PostgreSQL + TypeScript)
+language: 'en'
+
+early_access: false
+
+reviews:
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+      - development
+
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  path_filters:
+    - '!dist/**'
+    - '!node_modules/**'
+    - '!coverage/**'
+    - '!**/*.spec.ts'
+    - '!**/*.e2e-spec.ts'
+
+  path_instructions:
+    # Modules & Architecture
+    - path: 'src/modules/**/*.module.ts'
+      instructions: |
+        - Verify proper module encapsulation
+        - Check that imports/exports are minimal and intentional
+        - Ensure providers are correctly scoped
+        - Flag circular dependencies
+
+    # Controllers
+    - path: 'src/**/*.controller.ts'
+      instructions: |
+        - Validate proper use of decorators (@Get, @Post, @Put, @Delete, @Patch)
+        - Check for proper DTO validation with @Body(), @Param(), @Query()
+        - Ensure guards and interceptors are applied where needed
+        - Verify HTTP status codes are appropriate
+        - Check for proper error handling
+        - Ensure routes follow RESTful conventions
+
+    # Services
+    - path: 'src/**/*.service.ts'
+      instructions: |
+        - Verify single responsibility principle
+        - Check for proper dependency injection
+        - Ensure business logic is not leaked to controllers
+        - Look for proper error handling with custom exceptions
+        - Verify transactions are used where multiple DB operations occur
+
+    # Repositories & Database
+    - path: 'src/**/*.repository.ts'
+      instructions: |
+        - Check for SQL injection vulnerabilities
+        - Verify proper use of TypeORM query builder or repository methods
+        - Ensure proper indexing considerations for queries
+        - Look for N+1 query problems
+        - Verify relations are properly loaded (eager vs lazy)
+
+    # Entities
+    - path: 'src/**/*.entity.ts'
+      instructions: |
+        - Verify proper TypeORM decorators (@Entity, @Column, @PrimaryGeneratedColumn)
+        - Check column types match PostgreSQL best practices
+        - Ensure relations are properly defined (@OneToMany, @ManyToOne, etc.)
+        - Verify indexes are defined for frequently queried columns
+        - Check for proper cascade options
+
+    # DTOs
+    - path: 'src/**/*.dto.ts'
+      instructions: |
+        - Ensure all properties have class-validator decorators
+        - Check for proper use of @IsOptional() vs required fields
+        - Verify transformation decorators from class-transformer if needed
+        - Look for proper nested validation with @ValidateNested()
+        - Ensure DTO naming follows conventions (Create*, Update*, *ResponseDto)
+
+    # Guards & Auth
+    - path: 'src/**/*.guard.ts'
+      instructions: |
+        - Verify proper implementation of CanActivate interface
+        - Check for security vulnerabilities in authentication logic
+        - Ensure proper error responses for unauthorized access
+        - Verify JWT validation if applicable
+
+    # Interceptors
+    - path: 'src/**/*.interceptor.ts'
+      instructions: |
+        - Check for proper RxJS usage
+        - Verify error handling within interceptors
+        - Ensure performance considerations (logging, timing)
+
+    # Migrations
+    - path: 'src/database/migrations/**'
+      instructions: |
+        - Verify migrations are reversible (up and down methods)
+        - Check for data safety in production scenarios
+        - Ensure proper index creation
+        - Verify foreign key constraints
+
+    # Config
+    - path: 'src/config/**'
+      instructions: |
+        - Ensure sensitive values come from environment variables
+        - Check for proper validation of config values
+        - Verify no hardcoded secrets or credentials
+
+  tools:
+    eslint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    markdownlint:
+      enabled: true
+
+chat:
+  auto_reply: true
