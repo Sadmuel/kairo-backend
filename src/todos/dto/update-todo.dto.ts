@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsBoolean, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsDateString,
+  ValidateIf,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateTodoDto {
@@ -17,6 +23,7 @@ export class UpdateTodoDto {
     example: '2024-12-31T23:59:59.000Z',
   })
   @IsOptional()
+  @ValidateIf((o) => o.deadline !== null && o.deadline !== undefined)
   @IsDateString()
   deadline?: string | null;
 }

@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { TodosService } from './todos.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DaysService } from '../days/days.service';
@@ -469,8 +473,11 @@ describe('TodosService', () => {
 
   describe('reorder', () => {
     it('should reorder inbox todos', async () => {
+      // Mock validation findMany to return todos matching the orderedIds
+      mockPrismaService.todo.findMany
+        .mockResolvedValueOnce([{ id: 'todo-123' }, { id: 'todo-456' }]) // validation
+        .mockResolvedValueOnce([mockTodo]); // final findAll
       mockPrismaService.$transaction.mockResolvedValue([]);
-      mockPrismaService.todo.findMany.mockResolvedValue([mockTodo]);
 
       await service.reorder(
         'user-123',
@@ -483,8 +490,10 @@ describe('TodosService', () => {
 
     it('should reorder day todos', async () => {
       mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.todo.findMany
+        .mockResolvedValueOnce([{ id: 'todo-123' }]) // validation
+        .mockResolvedValueOnce([]); // final findAll
       mockPrismaService.$transaction.mockResolvedValue([]);
-      mockPrismaService.todo.findMany.mockResolvedValue([]);
 
       await service.reorder(
         'user-123',
@@ -498,8 +507,10 @@ describe('TodosService', () => {
 
     it('should reorder time block todos', async () => {
       mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+      mockPrismaService.todo.findMany
+        .mockResolvedValueOnce([{ id: 'todo-123' }]) // validation
+        .mockResolvedValueOnce([]); // final findAll
       mockPrismaService.$transaction.mockResolvedValue([]);
-      mockPrismaService.todo.findMany.mockResolvedValue([]);
 
       await service.reorder(
         'user-123',
@@ -536,27 +547,88 @@ describe('TodosService', () => {
         ),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('should throw ForbiddenException when todo count does not match', async () => {
+      // Return fewer todos than requested (ownership/context mismatch)
+      mockPrismaService.todo.findMany.mockResolvedValueOnce([{ id: 'todo-123' }]);
+
+      await expect(
+        service.reorder(
+          'user-123',
+          { inbox: true },
+          { orderedIds: ['todo-123', 'todo-456', 'todo-789'] },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException when todo belongs to different user', async () => {
+      // Return empty array (no matching todos for user)
+      mockPrismaService.todo.findMany.mockResolvedValueOnce([]);
+
+      await expect(
+        service.reorder(
+          'user-123',
+          { inbox: true },
+          { orderedIds: ['todo-123'] },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException when todo is in different context', async () => {
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+      // Todo exists but not in the specified day context
+      mockPrismaService.todo.findMany.mockResolvedValueOnce([]);
+
+      await expect(
+        service.reorder(
+          'user-123',
+          { dayId: 'day-123' },
+          { orderedIds: ['todo-123'] },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe('move', () => {
-    it('should move todo from inbox to day context', async () => {
-      mockPrismaService.todo.findFirst
-        .mockResolvedValueOnce(mockTodo)
-        .mockResolvedValueOnce({ order: 1 });
-      mockDaysService.findOne.mockResolvedValue(mockDay);
-      mockPrismaService.todo.update.mockResolvedValue({
-        ...mockTodo,
-        dayId: 'day-123',
-        order: 2,
+    // Helper to create transaction mock that executes the callback
+    const setupTransactionMock = (txMocks: {
+      findFirst?: jest.Mock;
+      update?: jest.Mock;
+      updateMany?: jest.Mock;
+    }) => {
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const tx = {
+          todo: {
+            findFirst: txMocks.findFirst ?? jest.fn(),
+            update: txMocks.update ?? jest.fn(),
+            updateMany: txMocks.updateMany ?? jest.fn(),
+          },
+        };
+        return callback(tx);
       });
-      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 0 });
+    };
+
+    it('should move todo from inbox to day context', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+
+      const updatedTodo = { ...mockTodo, dayId: 'day-123', order: 2 };
+      const txFindFirst = jest.fn().mockResolvedValue({ order: 1 });
+      const txUpdate = jest.fn().mockResolvedValue(updatedTodo);
+      const txUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+
+      setupTransactionMock({
+        findFirst: txFindFirst,
+        update: txUpdate,
+        updateMany: txUpdateMany,
+      });
 
       const result = await service.move('todo-123', 'user-123', {
         targetDayId: 'day-123',
       });
 
       expect(result.dayId).toBe('day-123');
-      expect(prisma.todo.update).toHaveBeenCalledWith({
+      expect(txUpdate).toHaveBeenCalledWith({
         where: { id: 'todo-123' },
         data: { dayId: 'day-123', timeBlockId: null, order: 2 },
         include: { day: true, timeBlock: true },
@@ -564,16 +636,19 @@ describe('TodosService', () => {
     });
 
     it('should move todo to time block context', async () => {
-      mockPrismaService.todo.findFirst
-        .mockResolvedValueOnce(mockTodo)
-        .mockResolvedValueOnce(null);
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
       mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
-      mockPrismaService.todo.update.mockResolvedValue({
-        ...mockTodo,
-        timeBlockId: 'tb-123',
-        order: 0,
+
+      const updatedTodo = { ...mockTodo, timeBlockId: 'tb-123', order: 0 };
+      const txFindFirst = jest.fn().mockResolvedValue(null);
+      const txUpdate = jest.fn().mockResolvedValue(updatedTodo);
+      const txUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+
+      setupTransactionMock({
+        findFirst: txFindFirst,
+        update: txUpdate,
+        updateMany: txUpdateMany,
       });
-      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 0 });
 
       const result = await service.move('todo-123', 'user-123', {
         targetTimeBlockId: 'tb-123',
@@ -584,16 +659,18 @@ describe('TodosService', () => {
 
     it('should move todo to inbox (unassigned)', async () => {
       const dayTodo = { ...mockTodo, dayId: 'day-123' };
-      mockPrismaService.todo.findFirst
-        .mockResolvedValueOnce(dayTodo)
-        .mockResolvedValueOnce(null);
-      mockPrismaService.todo.update.mockResolvedValue({
-        ...mockTodo,
-        dayId: null,
-        timeBlockId: null,
-        order: 0,
+      mockPrismaService.todo.findFirst.mockResolvedValue(dayTodo);
+
+      const updatedTodo = { ...mockTodo, dayId: null, timeBlockId: null, order: 0 };
+      const txFindFirst = jest.fn().mockResolvedValue(null);
+      const txUpdate = jest.fn().mockResolvedValue(updatedTodo);
+      const txUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+
+      setupTransactionMock({
+        findFirst: txFindFirst,
+        update: txUpdate,
+        updateMany: txUpdateMany,
       });
-      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 0 });
 
       const result = await service.move('todo-123', 'user-123', {});
 
@@ -607,12 +684,10 @@ describe('TodosService', () => {
       const result = await service.move('todo-123', 'user-123', {});
 
       expect(result).toEqual(mockTodo);
-      expect(prisma.todo.update).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException when both targets provided', async () => {
-      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
-
       await expect(
         service.move('todo-123', 'user-123', {
           targetDayId: 'day-123',
@@ -623,6 +698,7 @@ describe('TodosService', () => {
 
     it('should throw NotFoundException when todo not found', async () => {
       mockPrismaService.todo.findFirst.mockResolvedValue(null);
+      mockDaysService.findOne.mockResolvedValue(mockDay);
 
       await expect(
         service.move('nonexistent', 'user-123', { targetDayId: 'day-123' }),
@@ -630,7 +706,6 @@ describe('TodosService', () => {
     });
 
     it('should throw NotFoundException when target day not found', async () => {
-      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
       mockDaysService.findOne.mockRejectedValue(
         new NotFoundException('Day not found'),
       );
@@ -638,6 +713,30 @@ describe('TodosService', () => {
       await expect(
         service.move('todo-123', 'user-123', { targetDayId: 'nonexistent' }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should execute move atomically within transaction', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+
+      const txFindFirst = jest.fn().mockResolvedValue({ order: 0 });
+      const txUpdate = jest.fn().mockResolvedValue({ ...mockTodo, dayId: 'day-123' });
+      const txUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+
+      setupTransactionMock({
+        findFirst: txFindFirst,
+        update: txUpdate,
+        updateMany: txUpdateMany,
+      });
+
+      await service.move('todo-123', 'user-123', { targetDayId: 'day-123' });
+
+      // Verify transaction was used
+      expect(prisma.$transaction).toHaveBeenCalled();
+      // Verify operations were called within transaction
+      expect(txFindFirst).toHaveBeenCalled(); // getNextOrder
+      expect(txUpdate).toHaveBeenCalled(); // update todo
+      expect(txUpdateMany).toHaveBeenCalled(); // reorderAfterDelete
     });
   });
 });

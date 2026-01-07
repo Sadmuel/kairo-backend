@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { DaysService } from 'src/days/days.service';
@@ -13,6 +14,9 @@ import {
   MoveTodoDto,
   TodoFilterQueryDto,
 } from './dto';
+import { Prisma } from '@prisma/client';
+
+type TransactionClient = Prisma.TransactionClient;
 
 type TodoContext =
   | { type: 'inbox' }
@@ -166,6 +170,45 @@ export class TodosService {
       await this.timeBlocksService.findOne(context.timeBlockId, userId);
     }
 
+    // Build where clause for context validation
+    const contextWhere: Prisma.TodoWhereInput = { userId };
+    if (context.inbox) {
+      contextWhere.dayId = null;
+      contextWhere.timeBlockId = null;
+    } else if (context.dayId) {
+      contextWhere.dayId = context.dayId;
+      contextWhere.timeBlockId = null;
+    } else if (context.timeBlockId) {
+      contextWhere.timeBlockId = context.timeBlockId;
+    }
+
+    // Validate ownership and context for all todos
+    const existingTodos = await this.prisma.todo.findMany({
+      where: {
+        id: { in: dto.orderedIds },
+        ...contextWhere,
+      },
+      select: { id: true },
+    });
+
+    const existingIds = new Set(existingTodos.map((t) => t.id));
+
+    // Check count matches
+    if (existingTodos.length !== dto.orderedIds.length) {
+      throw new ForbiddenException(
+        'One or more todos do not exist, do not belong to you, or are not in the specified context',
+      );
+    }
+
+    // Verify all requested IDs were found
+    for (const id of dto.orderedIds) {
+      if (!existingIds.has(id)) {
+        throw new ForbiddenException(
+          'One or more todos do not exist, do not belong to you, or are not in the specified context',
+        );
+      }
+    }
+
     const updates = dto.orderedIds.map((id, index) =>
       this.prisma.todo.update({
         where: { id },
@@ -189,14 +232,15 @@ export class TodosService {
       );
     }
 
-    const todo = await this.findOne(id, userId);
-
+    // Validate targets exist before starting transaction
     if (dto.targetDayId) {
       await this.daysService.findOne(dto.targetDayId, userId);
     }
     if (dto.targetTimeBlockId) {
       await this.timeBlocksService.findOne(dto.targetTimeBlockId, userId);
     }
+
+    const todo = await this.findOne(id, userId);
 
     const sourceContext = this.getContext(todo.dayId, todo.timeBlockId);
     const targetContext = this.getContext(
@@ -210,24 +254,27 @@ export class TodosService {
       return todo;
     }
 
-    const newOrder = await this.getNextOrder(userId, targetContext);
+    // Execute move atomically
+    return this.prisma.$transaction(async (tx) => {
+      const newOrder = await this.getNextOrder(userId, targetContext, tx);
 
-    const updated = await this.prisma.todo.update({
-      where: { id },
-      data: {
-        dayId: dto.targetDayId ?? null,
-        timeBlockId: dto.targetTimeBlockId ?? null,
-        order: newOrder,
-      },
-      include: {
-        day: true,
-        timeBlock: true,
-      },
+      const updated = await tx.todo.update({
+        where: { id },
+        data: {
+          dayId: dto.targetDayId ?? null,
+          timeBlockId: dto.targetTimeBlockId ?? null,
+          order: newOrder,
+        },
+        include: {
+          day: true,
+          timeBlock: true,
+        },
+      });
+
+      await this.reorderAfterDelete(userId, sourceContext, todo.order, tx);
+
+      return updated;
     });
-
-    await this.reorderAfterDelete(userId, sourceContext, todo.order);
-
-    return updated;
   }
 
   private getContext(
@@ -255,7 +302,9 @@ export class TodosService {
   private async getNextOrder(
     userId: string,
     context: TodoContext,
+    tx?: TransactionClient,
   ): Promise<number> {
+    const client = tx ?? this.prisma;
     const where: {
       userId: string;
       dayId?: string | null;
@@ -276,7 +325,7 @@ export class TodosService {
         break;
     }
 
-    const lastTodo = await this.prisma.todo.findFirst({
+    const lastTodo = await client.todo.findFirst({
       where,
       orderBy: { order: 'desc' },
     });
@@ -288,7 +337,9 @@ export class TodosService {
     userId: string,
     context: TodoContext,
     deletedOrder: number,
+    tx?: TransactionClient,
   ) {
+    const client = tx ?? this.prisma;
     const where: {
       userId: string;
       order: { gt: number };
@@ -313,7 +364,7 @@ export class TodosService {
         break;
     }
 
-    await this.prisma.todo.updateMany({
+    await client.todo.updateMany({
       where,
       data: {
         order: { decrement: 1 },
