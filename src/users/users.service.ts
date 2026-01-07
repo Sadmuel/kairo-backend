@@ -21,10 +21,7 @@ export class UsersService {
       });
     } catch (error) {
       // Handle unique constraint violation (P2002)
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('Email already exists');
       }
       throw error;

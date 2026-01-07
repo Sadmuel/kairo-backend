@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from 'src/app.module';
 
 function getCorsOrigin(): string | string[] {
@@ -15,9 +16,7 @@ function getCorsOrigin(): string | string[] {
   }
 
   // In production, FRONTEND_URL must be configured
-  throw new Error(
-    'FRONTEND_URL environment variable is required in production',
-  );
+  throw new Error('FRONTEND_URL environment variable is required in production');
 }
 
 async function bootstrap() {
@@ -33,6 +32,17 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Swagger setup
+  const config = new DocumentBuilder()
+    .setTitle('Kairo API')
+    .setDescription('API for Kairo - Daily routine and time block management')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api', app, document);
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

@@ -4,6 +4,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { DaysModule } from './days/days.module';
+import { TimeBlocksModule } from './time-blocks/time-blocks.module';
+import { NotesModule } from './notes/notes.module';
 import { validate } from './config/env.validation';
 
 @Module({
@@ -43,6 +46,9 @@ import { validate } from './config/env.validation';
     PrismaModule,
     AuthModule,
     UsersModule,
+    DaysModule,
+    TimeBlocksModule,
+    NotesModule,
   ],
   controllers: [],
   providers: [],
