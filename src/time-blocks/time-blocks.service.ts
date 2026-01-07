@@ -49,8 +49,16 @@ export class TimeBlocksService {
       throw new BadRequestException('End time must be after start time');
     }
 
-    // If order is explicitly provided, use it directly
+    // If order is explicitly provided, check for conflicts first
     if (dto.order !== undefined) {
+      const existing = await this.prisma.timeBlock.findFirst({
+        where: { dayId: dto.dayId, order: dto.order },
+      });
+      if (existing) {
+        throw new BadRequestException(
+          `A time block with order ${dto.order} already exists for this day`,
+        );
+      }
       return this.prisma.timeBlock.create({
         data: {
           name: dto.name,

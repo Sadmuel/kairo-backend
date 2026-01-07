@@ -35,6 +35,11 @@ export class ParseDatePipe implements PipeTransform<string, string> {
       throw new BadRequestException('Invalid date');
     }
 
+    // Validate year is within reasonable bounds
+    if (year < 1900 || year > 2100) {
+      throw new BadRequestException('Year must be between 1900 and 2100');
+    }
+
     return value;
   }
 }

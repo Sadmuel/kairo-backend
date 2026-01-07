@@ -97,4 +97,28 @@ describe('ParseDatePipe', () => {
       expect(() => pipe.transform('2024-04-31')).toThrow(BadRequestException);
     });
   });
+
+  describe('year range validation', () => {
+    it('should accept year 1900', () => {
+      expect(pipe.transform('1900-01-01')).toBe('1900-01-01');
+    });
+
+    it('should accept year 2100', () => {
+      expect(pipe.transform('2100-12-31')).toBe('2100-12-31');
+    });
+
+    it('should reject year before 1900', () => {
+      expect(() => pipe.transform('1899-12-31')).toThrow(BadRequestException);
+      expect(() => pipe.transform('1899-12-31')).toThrow(
+        'Year must be between 1900 and 2100',
+      );
+    });
+
+    it('should reject year after 2100', () => {
+      expect(() => pipe.transform('2101-01-01')).toThrow(BadRequestException);
+      expect(() => pipe.transform('2101-01-01')).toThrow(
+        'Year must be between 1900 and 2100',
+      );
+    });
+  });
 });

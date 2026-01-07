@@ -193,17 +193,33 @@ describe('TimeBlocksService', () => {
       );
     });
 
-    it('should use provided order when specified', async () => {
+    it('should use provided order when specified and no conflict exists', async () => {
       mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(null);
       mockPrismaService.timeBlock.create.mockResolvedValue(mockTimeBlock);
 
       await service.create('user-123', { ...createDto, order: 5 });
 
+      expect(prisma.timeBlock.findFirst).toHaveBeenCalledWith({
+        where: { dayId: 'day-123', order: 5 },
+      });
       expect(prisma.timeBlock.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ order: 5 }),
         }),
       );
+    });
+
+    it('should throw BadRequestException when provided order conflicts with existing', async () => {
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue({ id: 'existing-tb', order: 5 });
+
+      await expect(
+        service.create('user-123', { ...createDto, order: 5 }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create('user-123', { ...createDto, order: 5 }),
+      ).rejects.toThrow('A time block with order 5 already exists for this day');
     });
 
     it('should throw BadRequestException when end time is before start time', async () => {

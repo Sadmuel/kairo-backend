@@ -43,6 +43,14 @@ export class DaysController {
     return this.daysService.findByDateRange(userId, query.startDate, query.endDate);
   }
 
+  @Get('date/:date')
+  @ApiOperation({ summary: 'Get day by date' })
+  @ApiParam({ name: 'date', description: 'Date (YYYY-MM-DD)', example: '2024-01-15' })
+  @ApiResponse({ status: 200, description: 'Returns day or null if not found' })
+  findByDate(@Param('date', ParseDatePipe) date: string, @CurrentUser('id') userId: string) {
+    return this.daysService.findByDate(userId, date);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get single day by ID' })
   @ApiParam({ name: 'id', description: 'Day UUID' })
@@ -50,14 +58,6 @@ export class DaysController {
   @ApiResponse({ status: 404, description: 'Day not found' })
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
     return this.daysService.findOne(id, userId);
-  }
-
-  @Get('date/:date')
-  @ApiOperation({ summary: 'Get day by date' })
-  @ApiParam({ name: 'date', description: 'Date (YYYY-MM-DD)', example: '2024-01-15' })
-  @ApiResponse({ status: 200, description: 'Returns day or null if not found' })
-  findByDate(@Param('date', ParseDatePipe) date: string, @CurrentUser('id') userId: string) {
-    return this.daysService.findByDate(userId, date);
   }
 
   @Post()
