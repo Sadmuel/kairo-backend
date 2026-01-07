@@ -14,9 +14,7 @@ export class ParseDatePipe implements PipeTransform<string, string> {
     // Check if the value matches YYYY-MM-DD format
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(value)) {
-      throw new BadRequestException(
-        'Invalid date format. Expected YYYY-MM-DD',
-      );
+      throw new BadRequestException('Invalid date format. Expected YYYY-MM-DD');
     }
 
     // Validate it's an actual valid date (not 2024-13-45)

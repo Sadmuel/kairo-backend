@@ -1,9 +1,5 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { PrismaService, TransactionClient } from 'src/prisma/prisma.service';
 import { DaysService } from 'src/days/days.service';
 import { CreateTimeBlockDto, UpdateTimeBlockDto, ReorderTimeBlocksDto } from './dto';
 
@@ -74,26 +70,28 @@ export class TimeBlocksService {
       });
     }
 
-    // Atomically get and increment the order counter
-    const day = await this.prisma.day.update({
-      where: { id: dto.dayId },
-      data: { nextTimeBlockOrder: { increment: 1 } },
-      select: { nextTimeBlockOrder: true },
-    });
-    const order = day.nextTimeBlockOrder - 1;
+    // Atomically get and increment the order counter, then create the time block
+    return this.prisma.$transaction(async (tx: TransactionClient) => {
+      const day = await tx.day.update({
+        where: { id: dto.dayId },
+        data: { nextTimeBlockOrder: { increment: 1 } },
+        select: { nextTimeBlockOrder: true },
+      });
+      const order = day.nextTimeBlockOrder - 1;
 
-    return this.prisma.timeBlock.create({
-      data: {
-        name: dto.name,
-        startTime: dto.startTime,
-        endTime: dto.endTime,
-        color: dto.color,
-        order,
-        dayId: dto.dayId,
-      },
-      include: {
-        notes: true,
-      },
+      return tx.timeBlock.create({
+        data: {
+          name: dto.name,
+          startTime: dto.startTime,
+          endTime: dto.endTime,
+          color: dto.color,
+          order,
+          dayId: dto.dayId,
+        },
+        include: {
+          notes: true,
+        },
+      });
     });
   }
 
@@ -106,19 +104,30 @@ export class TimeBlocksService {
       throw new BadRequestException('End time must be after start time');
     }
 
-    const updated = await this.prisma.timeBlock.update({
+    // If isCompleted is being updated, wrap both operations in a transaction
+    if (dto.isCompleted !== undefined) {
+      return this.prisma.$transaction(async (tx: TransactionClient) => {
+        const updated = await tx.timeBlock.update({
+          where: { id },
+          data: dto,
+          include: {
+            notes: { orderBy: { order: 'asc' } },
+          },
+        });
+
+        await this.daysService.updateCompletionStatus(timeBlock.dayId, tx);
+
+        return updated;
+      });
+    }
+
+    return this.prisma.timeBlock.update({
       where: { id },
       data: dto,
       include: {
         notes: { orderBy: { order: 'asc' } },
       },
     });
-
-    if (dto.isCompleted !== undefined) {
-      await this.daysService.updateCompletionStatus(timeBlock.dayId);
-    }
-
-    return updated;
   }
 
   async remove(id: string, userId: string) {

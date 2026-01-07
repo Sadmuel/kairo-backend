@@ -1,7 +1,8 @@
-import { IsString, IsUUID, IsOptional, IsInt, Min, Matches } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsInt, Min, Matches, IsNotEmpty } from 'class-validator';
 
 export class CreateTimeBlockDto {
   @IsString()
+  @IsNotEmpty()
   name: string;
 
   @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, {

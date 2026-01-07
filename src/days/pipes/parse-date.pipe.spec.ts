@@ -47,15 +47,11 @@ describe('ParseDatePipe', () => {
     });
 
     it('should reject datetime strings', () => {
-      expect(() => pipe.transform('2024-01-15T00:00:00')).toThrow(
-        BadRequestException,
-      );
+      expect(() => pipe.transform('2024-01-15T00:00:00')).toThrow(BadRequestException);
     });
 
     it('should reject ISO strings with timezone', () => {
-      expect(() => pipe.transform('2024-01-15T00:00:00.000Z')).toThrow(
-        BadRequestException,
-      );
+      expect(() => pipe.transform('2024-01-15T00:00:00.000Z')).toThrow(BadRequestException);
     });
 
     it('should reject arbitrary strings', () => {
@@ -109,16 +105,12 @@ describe('ParseDatePipe', () => {
 
     it('should reject year before 1900', () => {
       expect(() => pipe.transform('1899-12-31')).toThrow(BadRequestException);
-      expect(() => pipe.transform('1899-12-31')).toThrow(
-        'Year must be between 1900 and 2100',
-      );
+      expect(() => pipe.transform('1899-12-31')).toThrow('Year must be between 1900 and 2100');
     });
 
     it('should reject year after 2100', () => {
       expect(() => pipe.transform('2101-01-01')).toThrow(BadRequestException);
-      expect(() => pipe.transform('2101-01-01')).toThrow(
-        'Year must be between 1900 and 2100',
-      );
+      expect(() => pipe.transform('2101-01-01')).toThrow('Year must be between 1900 and 2100');
     });
   });
 });
