@@ -94,18 +94,14 @@ describe('UsersService', () => {
     });
 
     it('should throw ConflictException when email already exists', async () => {
-      const prismaError = new Prisma.PrismaClientKnownRequestError(
-        'Unique constraint failed',
-        { code: 'P2002', clientVersion: '5.0.0' },
-      );
+      const prismaError = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '5.0.0',
+      });
       mockPrismaService.user.create.mockRejectedValue(prismaError);
 
-      await expect(service.create(createUserDto)).rejects.toThrow(
-        ConflictException,
-      );
-      await expect(service.create(createUserDto)).rejects.toThrow(
-        'Email already exists',
-      );
+      await expect(service.create(createUserDto)).rejects.toThrow(ConflictException);
+      await expect(service.create(createUserDto)).rejects.toThrow('Email already exists');
     });
 
     it('should propagate other errors', async () => {
@@ -164,9 +160,7 @@ describe('UsersService', () => {
       const error = new Error('Database error');
       mockPrismaService.user.findUnique.mockRejectedValue(error);
 
-      await expect(service.findByEmail('test@example.com')).rejects.toThrow(
-        error,
-      );
+      await expect(service.findByEmail('test@example.com')).rejects.toThrow(error);
     });
   });
 

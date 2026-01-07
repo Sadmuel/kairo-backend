@@ -61,15 +61,9 @@ describe('AuthController (e2e)', () => {
     });
 
     it('should return 409 if email already exists', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(testUser)
-        .expect(201);
+      await request(app.getHttpServer()).post('/auth/register').send(testUser).expect(201);
 
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(testUser)
-        .expect(409);
+      await request(app.getHttpServer()).post('/auth/register').send(testUser).expect(409);
     });
 
     it('should return 400 for invalid email', async () => {
@@ -89,9 +83,7 @@ describe('AuthController (e2e)', () => {
 
   describe('POST /auth/login', () => {
     beforeEach(async () => {
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(testUser);
+      await request(app.getHttpServer()).post('/auth/register').send(testUser);
     });
 
     it('should login and return tokens', async () => {
@@ -125,9 +117,7 @@ describe('AuthController (e2e)', () => {
     let refreshToken: string;
 
     beforeEach(async () => {
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(testUser);
+      await request(app.getHttpServer()).post('/auth/register').send(testUser);
 
       const loginResponse = await request(app.getHttpServer())
         .post('/auth/login')
@@ -156,16 +146,10 @@ describe('AuthController (e2e)', () => {
 
     it('should invalidate old refresh token after use (rotation)', async () => {
       // Use refresh token once
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({ refreshToken })
-        .expect(201);
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(201);
 
       // Try to use the same refresh token again
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({ refreshToken })
-        .expect(401);
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
     });
 
     it('should return 401 for expired refresh token', async () => {
@@ -177,10 +161,7 @@ describe('AuthController (e2e)', () => {
       });
 
       // Try to use the expired refresh token
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({ refreshToken })
-        .expect(401);
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
     });
   });
 
@@ -188,9 +169,7 @@ describe('AuthController (e2e)', () => {
     let refreshToken: string;
 
     beforeEach(async () => {
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(testUser);
+      await request(app.getHttpServer()).post('/auth/register').send(testUser);
 
       const loginResponse = await request(app.getHttpServer())
         .post('/auth/login')
@@ -200,16 +179,10 @@ describe('AuthController (e2e)', () => {
     });
 
     it('should logout and invalidate refresh token', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/logout')
-        .send({ refreshToken })
-        .expect(204);
+      await request(app.getHttpServer()).post('/auth/logout').send({ refreshToken }).expect(204);
 
       // Try to use the refresh token after logout
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({ refreshToken })
-        .expect(401);
+      await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
     });
   });
 
@@ -217,9 +190,7 @@ describe('AuthController (e2e)', () => {
     let accessToken: string;
 
     beforeEach(async () => {
-      await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(testUser);
+      await request(app.getHttpServer()).post('/auth/register').send(testUser);
 
       const loginResponse = await request(app.getHttpServer())
         .post('/auth/login')

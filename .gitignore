@@ -38,6 +38,9 @@ lerna-debug.log*
 # Claude Code
 .claude/
 
+# SAFM (Planning documents)
+SAFM/
+
 # dotenv environment variable files
 .env
 .env.development.local
