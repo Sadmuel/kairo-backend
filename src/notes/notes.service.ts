@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { TimeBlocksService } from 'src/time-blocks/time-blocks.service';
 import { CreateNoteDto, UpdateNoteDto, ReorderNotesDto } from './dto';
@@ -39,14 +43,24 @@ export class NotesService {
   async create(userId: string, dto: CreateNoteDto) {
     await this.timeBlocksService.findOne(dto.timeBlockId, userId);
 
-    let order = dto.order;
-    if (order === undefined) {
-      const lastNote = await this.prisma.note.findFirst({
-        where: { timeBlockId: dto.timeBlockId },
-        orderBy: { order: 'desc' },
+    // If order is explicitly provided, use it directly
+    if (dto.order !== undefined) {
+      return this.prisma.note.create({
+        data: {
+          content: dto.content,
+          order: dto.order,
+          timeBlockId: dto.timeBlockId,
+        },
       });
-      order = lastNote ? lastNote.order + 1 : 0;
     }
+
+    // Atomically get and increment the order counter
+    const timeBlock = await this.prisma.timeBlock.update({
+      where: { id: dto.timeBlockId },
+      data: { nextNoteOrder: { increment: 1 } },
+      select: { nextNoteOrder: true },
+    });
+    const order = timeBlock.nextNoteOrder - 1;
 
     return this.prisma.note.create({
       data: {
@@ -67,39 +81,71 @@ export class NotesService {
   }
 
   async remove(id: string, userId: string) {
-    const note = await this.findOne(id, userId);
+    // Verify ownership first (outside transaction for better error messages)
+    await this.findOne(id, userId);
 
-    await this.prisma.note.delete({
-      where: { id },
+    await this.prisma.$transaction(async (tx) => {
+      // Re-fetch within transaction for consistency
+      const note = await tx.note.findUnique({
+        where: { id },
+      });
+
+      if (!note) {
+        throw new NotFoundException('Note not found');
+      }
+
+      await tx.note.delete({
+        where: { id },
+      });
+
+      // Reorder remaining notes within the same transaction
+      await tx.note.updateMany({
+        where: {
+          timeBlockId: note.timeBlockId,
+          order: { gt: note.order },
+        },
+        data: {
+          order: { decrement: 1 },
+        },
+      });
     });
-
-    await this.reorderAfterDelete(note.timeBlockId, note.order);
   }
 
   async reorder(userId: string, timeBlockId: string, dto: ReorderNotesDto) {
     await this.timeBlocksService.findOne(timeBlockId, userId);
 
-    const updates = dto.orderedIds.map((id, index) =>
+    // Verify all note IDs belong to the specified timeBlock
+    const notes = await this.prisma.note.findMany({
+      where: { timeBlockId },
+      select: { id: true },
+    });
+    const validIds = new Set(notes.map((n) => n.id));
+
+    for (const id of dto.orderedIds) {
+      if (!validIds.has(id)) {
+        throw new BadRequestException(`Note ${id} does not belong to this time block`);
+      }
+    }
+
+    // Two-phase update to avoid unique constraint conflicts:
+    // Phase 1: Set all orders to negative temporary values
+    const tempUpdates = dto.orderedIds.map((id, index) =>
+      this.prisma.note.update({
+        where: { id },
+        data: { order: -(index + 1) },
+      }),
+    );
+
+    // Phase 2: Set all orders to their final positive values
+    const finalUpdates = dto.orderedIds.map((id, index) =>
       this.prisma.note.update({
         where: { id },
         data: { order: index },
       }),
     );
 
-    await this.prisma.$transaction(updates);
+    await this.prisma.$transaction([...tempUpdates, ...finalUpdates]);
 
     return this.findByTimeBlock(timeBlockId, userId);
-  }
-
-  private async reorderAfterDelete(timeBlockId: string, deletedOrder: number) {
-    await this.prisma.note.updateMany({
-      where: {
-        timeBlockId,
-        order: { gt: deletedOrder },
-      },
-      data: {
-        order: { decrement: 1 },
-      },
-    });
   }
 }

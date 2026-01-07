@@ -37,12 +37,13 @@ model RefreshToken {
 }
 
 model Day {
-  id          String   @id @default(uuid())
-  date        DateTime @db.Date
-  isCompleted Boolean  @default(false)
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  date               DateTime @db.Date
+  isCompleted        Boolean  @default(false)
+  nextTimeBlockOrder Int      @default(0)
+  userId             String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   timeBlocks TimeBlock[]
@@ -52,20 +53,23 @@ model Day {
 }
 
 model TimeBlock {
-  id          String   @id @default(uuid())
-  name        String
-  startTime   String
-  endTime     String
-  isCompleted Boolean  @default(false)
-  order       Int
-  color       String?
-  dayId       String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  name          String
+  startTime     String
+  endTime       String
+  isCompleted   Boolean  @default(false)
+  order         Int
+  color         String?
+  nextNoteOrder Int      @default(0)
+  dayId         String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   day   Day     @relation(fields: [dayId], references: [id], onDelete: Cascade)
   notes Note[]
   todos Todo[]
+
+  @@unique([dayId, order])
 }
 
 model Note {
@@ -77,6 +81,8 @@ model Note {
   updatedAt   DateTime @updatedAt
 
   timeBlock TimeBlock @relation(fields: [timeBlockId], references: [id], onDelete: Cascade)
+
+  @@unique([timeBlockId, order])
 }
 
 model Todo {

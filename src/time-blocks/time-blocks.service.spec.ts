@@ -43,6 +43,9 @@ describe('TimeBlocksService', () => {
       updateMany: jest.fn(),
       delete: jest.fn(),
     },
+    day: {
+      update: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -148,21 +151,26 @@ describe('TimeBlocksService', () => {
       color: '#A5D8FF',
     };
 
-    it('should create a time block with auto-assigned order', async () => {
+    it('should create a time block with auto-assigned order using atomic counter', async () => {
       mockDaysService.findOne.mockResolvedValue(mockDay);
-      mockPrismaService.timeBlock.findFirst.mockResolvedValue({ order: 2 });
+      mockPrismaService.day.update.mockResolvedValue({ nextTimeBlockOrder: 3 });
       mockPrismaService.timeBlock.create.mockResolvedValue(mockTimeBlock);
 
       const result = await service.create('user-123', createDto);
 
       expect(result).toEqual(mockTimeBlock);
+      expect(prisma.day.update).toHaveBeenCalledWith({
+        where: { id: 'day-123' },
+        data: { nextTimeBlockOrder: { increment: 1 } },
+        select: { nextTimeBlockOrder: true },
+      });
       expect(prisma.timeBlock.create).toHaveBeenCalledWith({
         data: {
           name: 'Morning Routine',
           startTime: '06:00',
           endTime: '08:00',
           color: '#A5D8FF',
-          order: 3,
+          order: 2,
           dayId: 'day-123',
         },
         include: {
@@ -171,9 +179,9 @@ describe('TimeBlocksService', () => {
       });
     });
 
-    it('should create first time block with order 0', async () => {
+    it('should create first time block with order 0 using atomic counter', async () => {
       mockDaysService.findOne.mockResolvedValue(mockDay);
-      mockPrismaService.timeBlock.findFirst.mockResolvedValue(null);
+      mockPrismaService.day.update.mockResolvedValue({ nextTimeBlockOrder: 1 });
       mockPrismaService.timeBlock.create.mockResolvedValue(mockTimeBlock);
 
       await service.create('user-123', createDto);
@@ -299,18 +307,35 @@ describe('TimeBlocksService', () => {
   });
 
   describe('remove', () => {
-    it('should delete time block and reorder remaining', async () => {
+    const mockTxClient = {
+      timeBlock: {
+        findUnique: jest.fn(),
+        delete: jest.fn(),
+        updateMany: jest.fn(),
+      },
+    };
+
+    beforeEach(() => {
+      mockTxClient.timeBlock.findUnique.mockReset();
+      mockTxClient.timeBlock.delete.mockReset();
+      mockTxClient.timeBlock.updateMany.mockReset();
+      mockPrismaService.$transaction.mockImplementation((callback) => callback(mockTxClient));
+    });
+
+    it('should delete time block and reorder remaining in a transaction', async () => {
       mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockTimeBlock);
-      mockPrismaService.timeBlock.delete.mockResolvedValue(mockTimeBlock);
-      mockPrismaService.timeBlock.updateMany.mockResolvedValue({ count: 2 });
+      mockTxClient.timeBlock.findUnique.mockResolvedValue(mockTimeBlock);
+      mockTxClient.timeBlock.delete.mockResolvedValue(mockTimeBlock);
+      mockTxClient.timeBlock.updateMany.mockResolvedValue({ count: 2 });
       mockDaysService.updateCompletionStatus.mockResolvedValue(undefined);
 
       await service.remove('tb-123', 'user-123');
 
-      expect(prisma.timeBlock.delete).toHaveBeenCalledWith({
+      expect(mockPrismaService.$transaction).toHaveBeenCalled();
+      expect(mockTxClient.timeBlock.delete).toHaveBeenCalledWith({
         where: { id: 'tb-123' },
       });
-      expect(prisma.timeBlock.updateMany).toHaveBeenCalledWith({
+      expect(mockTxClient.timeBlock.updateMany).toHaveBeenCalledWith({
         where: {
           dayId: 'day-123',
           order: { gt: 0 },
@@ -319,7 +344,8 @@ describe('TimeBlocksService', () => {
           order: { decrement: 1 },
         },
       });
-      expect(daysService.updateCompletionStatus).toHaveBeenCalledWith('day-123');
+      // updateCompletionStatus should be called with the transaction client for atomicity
+      expect(daysService.updateCompletionStatus).toHaveBeenCalledWith('day-123', mockTxClient);
     });
 
     it('should throw NotFoundException when time block not found', async () => {
@@ -334,8 +360,8 @@ describe('TimeBlocksService', () => {
       mockDaysService.findOne.mockResolvedValue(mockDay);
       mockPrismaService.$transaction.mockResolvedValue([]);
       mockPrismaService.timeBlock.findMany.mockResolvedValue([
-        { ...mockTimeBlock, order: 0 },
-        { ...mockTimeBlock, id: 'tb-456', order: 1 },
+        { id: 'tb-123' },
+        { id: 'tb-456' },
       ]);
 
       const result = await service.reorder('user-123', 'day-123', {
@@ -353,6 +379,18 @@ describe('TimeBlocksService', () => {
       await expect(
         service.reorder('user-123', 'nonexistent', { orderedIds: ['tb-123'] }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when time block does not belong to day', async () => {
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.timeBlock.findMany.mockResolvedValue([{ id: 'tb-123' }]);
+
+      await expect(
+        service.reorder('user-123', 'day-123', { orderedIds: ['tb-123', 'invalid-tb'] }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.reorder('user-123', 'day-123', { orderedIds: ['tb-123', 'invalid-tb'] }),
+      ).rejects.toThrow('Time block invalid-tb does not belong to this day');
     });
   });
 });

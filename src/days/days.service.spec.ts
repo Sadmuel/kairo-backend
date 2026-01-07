@@ -56,6 +56,7 @@ describe('DaysService', () => {
       findUnique: jest.fn(),
       update: jest.fn(),
     },
+    $transaction: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -260,6 +261,28 @@ describe('DaysService', () => {
   });
 
   describe('updateCompletionStatus', () => {
+    // Create a transaction client mock that mirrors the main prisma mock
+    const mockTxClient = {
+      day: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      user: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+
+    beforeEach(() => {
+      // Reset tx client mocks
+      mockTxClient.day.findUnique.mockReset();
+      mockTxClient.day.update.mockReset();
+      mockTxClient.user.findUnique.mockReset();
+      mockTxClient.user.update.mockReset();
+      // Make $transaction execute the callback with our tx client
+      mockPrismaService.$transaction.mockImplementation((callback) => callback(mockTxClient));
+    });
+
     it('should mark day as completed when all time blocks are completed', async () => {
       const dayWithBlocks = {
         ...mockDay,
@@ -268,14 +291,14 @@ describe('DaysService', () => {
           { ...mockTimeBlock, id: 'tb-456', isCompleted: true },
         ],
       };
-      mockPrismaService.day.findUnique.mockResolvedValue(dayWithBlocks);
-      mockPrismaService.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      mockPrismaService.user.update.mockResolvedValue(mockUser);
+      mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
+      mockTxClient.user.findUnique.mockResolvedValue(mockUser);
+      mockTxClient.user.update.mockResolvedValue(mockUser);
 
       await service.updateCompletionStatus('day-123');
 
-      expect(prisma.day.update).toHaveBeenCalledWith({
+      expect(mockTxClient.day.update).toHaveBeenCalledWith({
         where: { id: 'day-123' },
         data: { isCompleted: true },
       });
@@ -290,23 +313,23 @@ describe('DaysService', () => {
           { ...mockTimeBlock, id: 'tb-456', isCompleted: false },
         ],
       };
-      mockPrismaService.day.findUnique.mockResolvedValue(dayWithBlocks);
-      mockPrismaService.day.update.mockResolvedValue({ ...mockDay, isCompleted: false });
+      mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: false });
 
       await service.updateCompletionStatus('day-123');
 
-      expect(prisma.day.update).toHaveBeenCalledWith({
+      expect(mockTxClient.day.update).toHaveBeenCalledWith({
         where: { id: 'day-123' },
         data: { isCompleted: false },
       });
     });
 
     it('should not update when day has no time blocks', async () => {
-      mockPrismaService.day.findUnique.mockResolvedValue({ ...mockDay, timeBlocks: [] });
+      mockTxClient.day.findUnique.mockResolvedValue({ ...mockDay, timeBlocks: [] });
 
       await service.updateCompletionStatus('day-123');
 
-      expect(prisma.day.update).not.toHaveBeenCalled();
+      expect(mockTxClient.day.update).not.toHaveBeenCalled();
     });
 
     it('should not update when completion status is unchanged', async () => {
@@ -315,11 +338,11 @@ describe('DaysService', () => {
         isCompleted: false,
         timeBlocks: [{ ...mockTimeBlock, isCompleted: false }],
       };
-      mockPrismaService.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
 
       await service.updateCompletionStatus('day-123');
 
-      expect(prisma.day.update).not.toHaveBeenCalled();
+      expect(mockTxClient.day.update).not.toHaveBeenCalled();
     });
 
     it('should update user streak when day becomes completed', async () => {
@@ -333,14 +356,14 @@ describe('DaysService', () => {
         lastCompletedDate: new Date('2024-01-14'),
         currentStreak: 5,
       };
-      mockPrismaService.day.findUnique.mockResolvedValue(dayWithBlocks);
-      mockPrismaService.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
-      mockPrismaService.user.findUnique.mockResolvedValue(userWithYesterdayCompleted);
-      mockPrismaService.user.update.mockResolvedValue(mockUser);
+      mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
+      mockTxClient.user.findUnique.mockResolvedValue(userWithYesterdayCompleted);
+      mockTxClient.user.update.mockResolvedValue(mockUser);
 
       await service.updateCompletionStatus('day-123');
 
-      expect(prisma.user.update).toHaveBeenCalledWith({
+      expect(mockTxClient.user.update).toHaveBeenCalledWith({
         where: { id: 'user-123' },
         data: {
           currentStreak: 6,
@@ -361,14 +384,14 @@ describe('DaysService', () => {
         lastCompletedDate: new Date('2024-01-10'),
         currentStreak: 5,
       };
-      mockPrismaService.day.findUnique.mockResolvedValue(dayWithBlocks);
-      mockPrismaService.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
-      mockPrismaService.user.findUnique.mockResolvedValue(userWithOldCompleted);
-      mockPrismaService.user.update.mockResolvedValue(mockUser);
+      mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
+      mockTxClient.user.findUnique.mockResolvedValue(userWithOldCompleted);
+      mockTxClient.user.update.mockResolvedValue(mockUser);
 
       await service.updateCompletionStatus('day-123');
 
-      expect(prisma.user.update).toHaveBeenCalledWith({
+      expect(mockTxClient.user.update).toHaveBeenCalledWith({
         where: { id: 'user-123' },
         data: {
           currentStreak: 1,
@@ -376,6 +399,21 @@ describe('DaysService', () => {
           lastCompletedDate: dayWithBlocks.date,
         },
       });
+    });
+
+    it('should use transaction for all database operations', async () => {
+      const dayWithBlocks = {
+        ...mockDay,
+        timeBlocks: [{ ...mockTimeBlock, isCompleted: true }],
+      };
+      mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
+      mockTxClient.user.findUnique.mockResolvedValue(mockUser);
+      mockTxClient.user.update.mockResolvedValue(mockUser);
+
+      await service.updateCompletionStatus('day-123');
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalled();
     });
   });
 });

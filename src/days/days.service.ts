@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateDayDto, UpdateDayDto } from './dto';
+import { parseDate } from './pipes';
+
+// Type for Prisma transaction client
+type TransactionClient = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
 @Injectable()
 export class DaysService {
@@ -11,8 +15,8 @@ export class DaysService {
       where: {
         userId,
         date: {
-          gte: new Date(startDate),
-          lte: new Date(endDate),
+          gte: parseDate(startDate),
+          lte: parseDate(endDate),
         },
       },
       include: {
@@ -50,7 +54,7 @@ export class DaysService {
   async findByDate(userId: string, date: string) {
     const day = await this.prisma.day.findUnique({
       where: {
-        userId_date: { userId, date: new Date(date) },
+        userId_date: { userId, date: parseDate(date) },
       },
       include: {
         timeBlocks: {
@@ -68,7 +72,7 @@ export class DaysService {
   async create(userId: string, dto: CreateDayDto) {
     const existing = await this.prisma.day.findUnique({
       where: {
-        userId_date: { userId, date: new Date(dto.date) },
+        userId_date: { userId, date: parseDate(dto.date) },
       },
     });
 
@@ -78,7 +82,7 @@ export class DaysService {
 
     return this.prisma.day.create({
       data: {
-        date: new Date(dto.date),
+        date: parseDate(dto.date),
         userId,
       },
       include: {
@@ -109,45 +113,56 @@ export class DaysService {
     });
   }
 
-  async updateCompletionStatus(dayId: string) {
-    const day = await this.prisma.day.findUnique({
-      where: { id: dayId },
-      include: { timeBlocks: true },
-    });
-
-    if (!day || day.timeBlocks.length === 0) return;
-
-    const allCompleted = day.timeBlocks.every((tb) => tb.isCompleted);
-
-    if (day.isCompleted !== allCompleted) {
-      await this.prisma.day.update({
+  async updateCompletionStatus(dayId: string, tx?: TransactionClient) {
+    const executeUpdate = async (client: TransactionClient) => {
+      const day = await client.day.findUnique({
         where: { id: dayId },
-        data: { isCompleted: allCompleted },
+        include: { timeBlocks: true },
       });
 
-      if (allCompleted) {
-        await this.updateUserStreak(day.userId, day.date);
+      if (!day || day.timeBlocks.length === 0) return;
+
+      const allCompleted = day.timeBlocks.every((tb) => tb.isCompleted);
+
+      if (day.isCompleted !== allCompleted) {
+        await client.day.update({
+          where: { id: dayId },
+          data: { isCompleted: allCompleted },
+        });
+
+        if (allCompleted) {
+          await this.updateUserStreak(client, day.userId, day.date);
+        }
       }
+    };
+
+    // If a transaction client is provided, use it directly
+    // Otherwise, create a new transaction
+    if (tx) {
+      await executeUpdate(tx);
+    } else {
+      await this.prisma.$transaction(executeUpdate);
     }
   }
 
-  private async updateUserStreak(userId: string, date: Date) {
-    const user = await this.prisma.user.findUnique({
+  private async updateUserStreak(
+    tx: TransactionClient,
+    userId: string,
+    date: Date,
+  ) {
+    const user = await tx.user.findUnique({
       where: { id: userId },
     });
 
     if (!user) return;
 
-    const yesterday = new Date(date);
-    yesterday.setDate(yesterday.getDate() - 1);
-
     const isConsecutive =
-      user.lastCompletedDate && user.lastCompletedDate.toDateString() === yesterday.toDateString();
+      user.lastCompletedDate && this.isConsecutiveDay(user.lastCompletedDate, date);
 
     const newStreak = isConsecutive ? user.currentStreak + 1 : 1;
     const newLongest = Math.max(newStreak, user.longestStreak);
 
-    await this.prisma.user.update({
+    await tx.user.update({
       where: { id: userId },
       data: {
         currentStreak: newStreak,
@@ -155,5 +170,15 @@ export class DaysService {
         lastCompletedDate: date,
       },
     });
+  }
+
+  /**
+   * Checks if lastCompleted is exactly one UTC day before current.
+   */
+  private isConsecutiveDay(lastCompleted: Date, current: Date): boolean {
+    // Calculate the difference in UTC days
+    const lastUtcDays = Math.floor(lastCompleted.getTime() / (1000 * 60 * 60 * 24));
+    const currentUtcDays = Math.floor(current.getTime() / (1000 * 60 * 60 * 24));
+    return currentUtcDays - lastUtcDays === 1;
   }
 }

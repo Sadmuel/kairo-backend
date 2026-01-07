@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { NotesService } from './notes.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TimeBlocksService } from '../time-blocks/time-blocks.service';
@@ -51,6 +51,9 @@ describe('NotesService', () => {
       update: jest.fn(),
       updateMany: jest.fn(),
       delete: jest.fn(),
+    },
+    timeBlock: {
+      update: jest.fn(),
     },
     $transaction: jest.fn(),
   };
@@ -165,26 +168,31 @@ describe('NotesService', () => {
       timeBlockId: 'tb-123',
     };
 
-    it('should create a note with auto-assigned order', async () => {
+    it('should create a note with auto-assigned order using atomic counter', async () => {
       mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
-      mockPrismaService.note.findFirst.mockResolvedValue({ order: 2 });
+      mockPrismaService.timeBlock.update.mockResolvedValue({ nextNoteOrder: 3 });
       mockPrismaService.note.create.mockResolvedValue(mockNote);
 
       const result = await service.create('user-123', createDto);
 
       expect(result).toEqual(mockNote);
+      expect(prisma.timeBlock.update).toHaveBeenCalledWith({
+        where: { id: 'tb-123' },
+        data: { nextNoteOrder: { increment: 1 } },
+        select: { nextNoteOrder: true },
+      });
       expect(prisma.note.create).toHaveBeenCalledWith({
         data: {
           content: 'Wake up and stretch',
-          order: 3,
+          order: 2,
           timeBlockId: 'tb-123',
         },
       });
     });
 
-    it('should create first note with order 0', async () => {
+    it('should create first note with order 0 using atomic counter', async () => {
       mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
-      mockPrismaService.note.findFirst.mockResolvedValue(null);
+      mockPrismaService.timeBlock.update.mockResolvedValue({ nextNoteOrder: 1 });
       mockPrismaService.note.create.mockResolvedValue(mockNote);
 
       await service.create('user-123', createDto);
@@ -245,17 +253,34 @@ describe('NotesService', () => {
   });
 
   describe('remove', () => {
-    it('should delete note and reorder remaining', async () => {
+    const mockTxClient = {
+      note: {
+        findUnique: jest.fn(),
+        delete: jest.fn(),
+        updateMany: jest.fn(),
+      },
+    };
+
+    beforeEach(() => {
+      mockTxClient.note.findUnique.mockReset();
+      mockTxClient.note.delete.mockReset();
+      mockTxClient.note.updateMany.mockReset();
+      mockPrismaService.$transaction.mockImplementation((callback) => callback(mockTxClient));
+    });
+
+    it('should delete note and reorder remaining in a transaction', async () => {
       mockPrismaService.note.findFirst.mockResolvedValue(mockNote);
-      mockPrismaService.note.delete.mockResolvedValue(mockNote);
-      mockPrismaService.note.updateMany.mockResolvedValue({ count: 2 });
+      mockTxClient.note.findUnique.mockResolvedValue(mockNote);
+      mockTxClient.note.delete.mockResolvedValue(mockNote);
+      mockTxClient.note.updateMany.mockResolvedValue({ count: 2 });
 
       await service.remove('note-123', 'user-123');
 
-      expect(prisma.note.delete).toHaveBeenCalledWith({
+      expect(mockPrismaService.$transaction).toHaveBeenCalled();
+      expect(mockTxClient.note.delete).toHaveBeenCalledWith({
         where: { id: 'note-123' },
       });
-      expect(prisma.note.updateMany).toHaveBeenCalledWith({
+      expect(mockTxClient.note.updateMany).toHaveBeenCalledWith({
         where: {
           timeBlockId: 'tb-123',
           order: { gt: 0 },
@@ -278,8 +303,8 @@ describe('NotesService', () => {
       mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
       mockPrismaService.$transaction.mockResolvedValue([]);
       mockPrismaService.note.findMany.mockResolvedValue([
-        { ...mockNote, order: 0 },
-        { ...mockNote, id: 'note-456', order: 1 },
+        { id: 'note-123' },
+        { id: 'note-456' },
       ]);
 
       const result = await service.reorder('user-123', 'tb-123', {
@@ -299,6 +324,18 @@ describe('NotesService', () => {
       await expect(
         service.reorder('user-123', 'nonexistent', { orderedIds: ['note-123'] }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when note does not belong to time block', async () => {
+      mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+      mockPrismaService.note.findMany.mockResolvedValue([{ id: 'note-123' }]);
+
+      await expect(
+        service.reorder('user-123', 'tb-123', { orderedIds: ['note-123', 'invalid-note'] }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.reorder('user-123', 'tb-123', { orderedIds: ['note-123', 'invalid-note'] }),
+      ).rejects.toThrow('Note invalid-note does not belong to this time block');
     });
   });
 });

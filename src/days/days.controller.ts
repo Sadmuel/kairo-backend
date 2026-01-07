@@ -22,6 +22,7 @@ import {
 } from '@nestjs/swagger';
 import { DaysService } from './days.service';
 import { CreateDayDto, UpdateDayDto, CalendarQueryDto } from './dto';
+import { ParseDatePipe } from './pipes';
 import { JwtAuthGuard } from 'src/auth/guards';
 import { CurrentUser } from 'src/auth/decorators';
 
@@ -55,7 +56,7 @@ export class DaysController {
   @ApiOperation({ summary: 'Get day by date' })
   @ApiParam({ name: 'date', description: 'Date (YYYY-MM-DD)', example: '2024-01-15' })
   @ApiResponse({ status: 200, description: 'Returns day or null if not found' })
-  findByDate(@Param('date') date: string, @CurrentUser('id') userId: string) {
+  findByDate(@Param('date', ParseDatePipe) date: string, @CurrentUser('id') userId: string) {
     return this.daysService.findByDate(userId, date);
   }
 
