@@ -7,6 +7,7 @@ import { UsersModule } from './users/users.module';
 import { DaysModule } from './days/days.module';
 import { TimeBlocksModule } from './time-blocks/time-blocks.module';
 import { NotesModule } from './notes/notes.module';
+import { TodosModule } from './todos/todos.module';
 import { validate } from './config/env.validation';
 
 @Module({
@@ -49,6 +50,7 @@ import { validate } from './config/env.validation';
     DaysModule,
     TimeBlocksModule,
     NotesModule,
+    TodosModule,
   ],
   controllers: [],
   providers: [],
