@@ -153,18 +153,29 @@ describe('TimeBlocksService', () => {
 
     it('should create a time block with auto-assigned order using atomic counter', async () => {
       mockDaysService.findOne.mockResolvedValue(mockDay);
-      mockPrismaService.day.update.mockResolvedValue({ nextTimeBlockOrder: 3 });
-      mockPrismaService.timeBlock.create.mockResolvedValue(mockTimeBlock);
+
+      // Mock the transaction to execute the callback with a mock tx client
+      const mockTxClient = {
+        day: {
+          update: jest.fn().mockResolvedValue({ nextTimeBlockOrder: 3 }),
+        },
+        timeBlock: {
+          create: jest.fn().mockResolvedValue(mockTimeBlock),
+        },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        return callback(mockTxClient);
+      });
 
       const result = await service.create('user-123', createDto);
 
       expect(result).toEqual(mockTimeBlock);
-      expect(prisma.day.update).toHaveBeenCalledWith({
+      expect(mockTxClient.day.update).toHaveBeenCalledWith({
         where: { id: 'day-123' },
         data: { nextTimeBlockOrder: { increment: 1 } },
         select: { nextTimeBlockOrder: true },
       });
-      expect(prisma.timeBlock.create).toHaveBeenCalledWith({
+      expect(mockTxClient.timeBlock.create).toHaveBeenCalledWith({
         data: {
           name: 'Morning Routine',
           startTime: '06:00',
@@ -181,12 +192,22 @@ describe('TimeBlocksService', () => {
 
     it('should create first time block with order 0 using atomic counter', async () => {
       mockDaysService.findOne.mockResolvedValue(mockDay);
-      mockPrismaService.day.update.mockResolvedValue({ nextTimeBlockOrder: 1 });
-      mockPrismaService.timeBlock.create.mockResolvedValue(mockTimeBlock);
+
+      const mockTxClient = {
+        day: {
+          update: jest.fn().mockResolvedValue({ nextTimeBlockOrder: 1 }),
+        },
+        timeBlock: {
+          create: jest.fn().mockResolvedValue(mockTimeBlock),
+        },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        return callback(mockTxClient);
+      });
 
       await service.create('user-123', createDto);
 
-      expect(prisma.timeBlock.create).toHaveBeenCalledWith(
+      expect(mockTxClient.timeBlock.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ order: 0 }),
         }),
@@ -214,12 +235,12 @@ describe('TimeBlocksService', () => {
       mockDaysService.findOne.mockResolvedValue(mockDay);
       mockPrismaService.timeBlock.findFirst.mockResolvedValue({ id: 'existing-tb', order: 5 });
 
-      await expect(
-        service.create('user-123', { ...createDto, order: 5 }),
-      ).rejects.toThrow(BadRequestException);
-      await expect(
-        service.create('user-123', { ...createDto, order: 5 }),
-      ).rejects.toThrow('A time block with order 5 already exists for this day');
+      await expect(service.create('user-123', { ...createDto, order: 5 })).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.create('user-123', { ...createDto, order: 5 })).rejects.toThrow(
+        'A time block with order 5 already exists for this day',
+      );
     });
 
     it('should throw BadRequestException when end time is before start time', async () => {
@@ -290,15 +311,21 @@ describe('TimeBlocksService', () => {
 
     it('should update day completion status when isCompleted changes', async () => {
       mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockTimeBlock);
-      mockPrismaService.timeBlock.update.mockResolvedValue({
-        ...mockTimeBlock,
-        isCompleted: true,
-      });
       mockDaysService.updateCompletionStatus.mockResolvedValue(undefined);
+
+      const updatedTimeBlock = { ...mockTimeBlock, isCompleted: true };
+      const mockTxClient = {
+        timeBlock: {
+          update: jest.fn().mockResolvedValue(updatedTimeBlock),
+        },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        return callback(mockTxClient);
+      });
 
       await service.update('tb-123', 'user-123', { isCompleted: true });
 
-      expect(daysService.updateCompletionStatus).toHaveBeenCalledWith('day-123');
+      expect(daysService.updateCompletionStatus).toHaveBeenCalledWith('day-123', mockTxClient);
     });
 
     it('should not update day completion when isCompleted is not changed', async () => {
@@ -375,10 +402,7 @@ describe('TimeBlocksService', () => {
     it('should reorder time blocks', async () => {
       mockDaysService.findOne.mockResolvedValue(mockDay);
       mockPrismaService.$transaction.mockResolvedValue([]);
-      mockPrismaService.timeBlock.findMany.mockResolvedValue([
-        { id: 'tb-123' },
-        { id: 'tb-456' },
-      ]);
+      mockPrismaService.timeBlock.findMany.mockResolvedValue([{ id: 'tb-123' }, { id: 'tb-456' }]);
 
       const result = await service.reorder('user-123', 'day-123', {
         orderedIds: ['tb-456', 'tb-123'],

@@ -1,9 +1,5 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { PrismaService, TransactionClient } from 'src/prisma/prisma.service';
 import { TimeBlocksService } from 'src/time-blocks/time-blocks.service';
 import { CreateNoteDto, UpdateNoteDto, ReorderNotesDto } from './dto';
 
@@ -54,20 +50,22 @@ export class NotesService {
       });
     }
 
-    // Atomically get and increment the order counter
-    const timeBlock = await this.prisma.timeBlock.update({
-      where: { id: dto.timeBlockId },
-      data: { nextNoteOrder: { increment: 1 } },
-      select: { nextNoteOrder: true },
-    });
-    const order = timeBlock.nextNoteOrder - 1;
+    // Atomically get and increment the order counter, then create the note
+    return this.prisma.$transaction(async (tx: TransactionClient) => {
+      const timeBlock = await tx.timeBlock.update({
+        where: { id: dto.timeBlockId },
+        data: { nextNoteOrder: { increment: 1 } },
+        select: { nextNoteOrder: true },
+      });
+      const order = timeBlock.nextNoteOrder - 1;
 
-    return this.prisma.note.create({
-      data: {
-        content: dto.content,
-        order,
-        timeBlockId: dto.timeBlockId,
-      },
+      return tx.note.create({
+        data: {
+          content: dto.content,
+          order,
+          timeBlockId: dto.timeBlockId,
+        },
+      });
     });
   }
 
@@ -114,12 +112,23 @@ export class NotesService {
   async reorder(userId: string, timeBlockId: string, dto: ReorderNotesDto) {
     await this.timeBlocksService.findOne(timeBlockId, userId);
 
+    // Check for duplicate IDs in the request
+    const uniqueIds = new Set(dto.orderedIds);
+    if (uniqueIds.size !== dto.orderedIds.length) {
+      throw new BadRequestException('Duplicate note IDs are not allowed');
+    }
+
     // Verify all note IDs belong to the specified timeBlock
     const notes = await this.prisma.note.findMany({
       where: { timeBlockId },
       select: { id: true },
     });
     const validIds = new Set(notes.map((n) => n.id));
+
+    // Ensure orderedIds exactly covers all notes in the time block
+    if (uniqueIds.size !== validIds.size) {
+      throw new BadRequestException('orderedIds must include exactly all notes in the time block');
+    }
 
     for (const id of dto.orderedIds) {
       if (!validIds.has(id)) {

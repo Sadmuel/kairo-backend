@@ -1,22 +1,31 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
+import { PrismaService, TransactionClient } from 'src/prisma/prisma.service';
 import { CreateDayDto, UpdateDayDto } from './dto';
 import { parseDate } from './pipes';
-
-// Type for Prisma transaction client
-type TransactionClient = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
 @Injectable()
 export class DaysService {
   constructor(private prisma: PrismaService) {}
 
   async findByDateRange(userId: string, startDate: string, endDate: string) {
+    const start = parseDate(startDate);
+    const end = parseDate(endDate);
+
+    if (start > end) {
+      throw new BadRequestException('startDate must be less than or equal to endDate');
+    }
+
     return this.prisma.day.findMany({
       where: {
         userId,
         date: {
-          gte: parseDate(startDate),
-          lte: parseDate(endDate),
+          gte: start,
+          lte: end,
         },
       },
       include: {
@@ -100,6 +109,9 @@ export class DaysService {
       include: {
         timeBlocks: {
           orderBy: { order: 'asc' },
+          include: {
+            notes: { orderBy: { order: 'asc' } },
+          },
         },
       },
     });
@@ -145,11 +157,7 @@ export class DaysService {
     }
   }
 
-  private async updateUserStreak(
-    tx: TransactionClient,
-    userId: string,
-    date: Date,
-  ) {
+  private async updateUserStreak(tx: TransactionClient, userId: string, date: Date) {
     const user = await tx.user.findUnique({
       where: { id: userId },
     });

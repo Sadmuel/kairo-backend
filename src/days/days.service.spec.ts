@@ -227,6 +227,9 @@ describe('DaysService', () => {
         include: {
           timeBlocks: {
             orderBy: { order: 'asc' },
+            include: {
+              notes: { orderBy: { order: 'asc' } },
+            },
           },
         },
       });

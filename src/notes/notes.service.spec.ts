@@ -170,18 +170,29 @@ describe('NotesService', () => {
 
     it('should create a note with auto-assigned order using atomic counter', async () => {
       mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
-      mockPrismaService.timeBlock.update.mockResolvedValue({ nextNoteOrder: 3 });
-      mockPrismaService.note.create.mockResolvedValue(mockNote);
+
+      // Mock the transaction to execute the callback with a mock tx client
+      const mockTxClient = {
+        timeBlock: {
+          update: jest.fn().mockResolvedValue({ nextNoteOrder: 3 }),
+        },
+        note: {
+          create: jest.fn().mockResolvedValue(mockNote),
+        },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        return callback(mockTxClient);
+      });
 
       const result = await service.create('user-123', createDto);
 
       expect(result).toEqual(mockNote);
-      expect(prisma.timeBlock.update).toHaveBeenCalledWith({
+      expect(mockTxClient.timeBlock.update).toHaveBeenCalledWith({
         where: { id: 'tb-123' },
         data: { nextNoteOrder: { increment: 1 } },
         select: { nextNoteOrder: true },
       });
-      expect(prisma.note.create).toHaveBeenCalledWith({
+      expect(mockTxClient.note.create).toHaveBeenCalledWith({
         data: {
           content: 'Wake up and stretch',
           order: 2,
@@ -192,12 +203,22 @@ describe('NotesService', () => {
 
     it('should create first note with order 0 using atomic counter', async () => {
       mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
-      mockPrismaService.timeBlock.update.mockResolvedValue({ nextNoteOrder: 1 });
-      mockPrismaService.note.create.mockResolvedValue(mockNote);
+
+      const mockTxClient = {
+        timeBlock: {
+          update: jest.fn().mockResolvedValue({ nextNoteOrder: 1 }),
+        },
+        note: {
+          create: jest.fn().mockResolvedValue(mockNote),
+        },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        return callback(mockTxClient);
+      });
 
       await service.create('user-123', createDto);
 
-      expect(prisma.note.create).toHaveBeenCalledWith(
+      expect(mockTxClient.note.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ order: 0 }),
         }),
@@ -302,10 +323,7 @@ describe('NotesService', () => {
     it('should reorder notes', async () => {
       mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
       mockPrismaService.$transaction.mockResolvedValue([]);
-      mockPrismaService.note.findMany.mockResolvedValue([
-        { id: 'note-123' },
-        { id: 'note-456' },
-      ]);
+      mockPrismaService.note.findMany.mockResolvedValue([{ id: 'note-123' }, { id: 'note-456' }]);
 
       const result = await service.reorder('user-123', 'tb-123', {
         orderedIds: ['note-456', 'note-123'],
@@ -328,14 +346,39 @@ describe('NotesService', () => {
 
     it('should throw BadRequestException when note does not belong to time block', async () => {
       mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
-      mockPrismaService.note.findMany.mockResolvedValue([{ id: 'note-123' }]);
+      // Provide two valid notes in the time block
+      mockPrismaService.note.findMany.mockResolvedValue([{ id: 'note-123' }, { id: 'note-456' }]);
 
+      // Request reorder with one valid note and one invalid note (same count, but wrong ID)
       await expect(
         service.reorder('user-123', 'tb-123', { orderedIds: ['note-123', 'invalid-note'] }),
       ).rejects.toThrow(BadRequestException);
       await expect(
         service.reorder('user-123', 'tb-123', { orderedIds: ['note-123', 'invalid-note'] }),
       ).rejects.toThrow('Note invalid-note does not belong to this time block');
+    });
+
+    it('should throw BadRequestException when orderedIds has wrong count', async () => {
+      mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+      mockPrismaService.note.findMany.mockResolvedValue([{ id: 'note-123' }]);
+
+      await expect(
+        service.reorder('user-123', 'tb-123', { orderedIds: ['note-123', 'note-456'] }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.reorder('user-123', 'tb-123', { orderedIds: ['note-123', 'note-456'] }),
+      ).rejects.toThrow('orderedIds must include exactly all notes in the time block');
+    });
+
+    it('should throw BadRequestException when orderedIds has duplicates', async () => {
+      mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+
+      await expect(
+        service.reorder('user-123', 'tb-123', { orderedIds: ['note-123', 'note-123'] }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.reorder('user-123', 'tb-123', { orderedIds: ['note-123', 'note-123'] }),
+      ).rejects.toThrow('Duplicate note IDs are not allowed');
     });
   });
 });
