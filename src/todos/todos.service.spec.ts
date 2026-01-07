@@ -422,17 +422,40 @@ describe('TodosService', () => {
   });
 
   describe('remove', () => {
-    it('should delete todo and reorder remaining', async () => {
+    // Helper to create transaction mock for remove
+    const setupRemoveTransactionMock = (txMocks: {
+      delete?: jest.Mock;
+      updateMany?: jest.Mock;
+    }) => {
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const tx = {
+          todo: {
+            delete: txMocks.delete ?? jest.fn(),
+            updateMany: txMocks.updateMany ?? jest.fn(),
+          },
+        };
+        return callback(tx);
+      });
+    };
+
+    it('should delete todo and reorder remaining atomically', async () => {
       mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
-      mockPrismaService.todo.delete.mockResolvedValue(mockTodo);
-      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 2 });
+
+      const txDelete = jest.fn().mockResolvedValue(mockTodo);
+      const txUpdateMany = jest.fn().mockResolvedValue({ count: 2 });
+
+      setupRemoveTransactionMock({
+        delete: txDelete,
+        updateMany: txUpdateMany,
+      });
 
       await service.remove('todo-123', 'user-123');
 
-      expect(prisma.todo.delete).toHaveBeenCalledWith({
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(txDelete).toHaveBeenCalledWith({
         where: { id: 'todo-123' },
       });
-      expect(prisma.todo.updateMany).toHaveBeenCalledWith({
+      expect(txUpdateMany).toHaveBeenCalledWith({
         where: {
           userId: 'user-123',
           order: { gt: 0 },
@@ -446,12 +469,18 @@ describe('TodosService', () => {
     it('should reorder remaining day todos', async () => {
       const dayTodo = { ...mockTodo, dayId: 'day-123', order: 1 };
       mockPrismaService.todo.findFirst.mockResolvedValue(dayTodo);
-      mockPrismaService.todo.delete.mockResolvedValue(dayTodo);
-      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 1 });
+
+      const txDelete = jest.fn().mockResolvedValue(dayTodo);
+      const txUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+
+      setupRemoveTransactionMock({
+        delete: txDelete,
+        updateMany: txUpdateMany,
+      });
 
       await service.remove('todo-123', 'user-123');
 
-      expect(prisma.todo.updateMany).toHaveBeenCalledWith({
+      expect(txUpdateMany).toHaveBeenCalledWith({
         where: {
           userId: 'user-123',
           order: { gt: 1 },

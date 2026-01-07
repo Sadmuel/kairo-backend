@@ -140,16 +140,15 @@ export class TodosService {
 
   async remove(id: string, userId: string) {
     const todo = await this.findOne(id, userId);
+    const context = this.getContext(todo.dayId, todo.timeBlockId);
 
-    await this.prisma.todo.delete({
-      where: { id },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.todo.delete({
+        where: { id },
+      });
+
+      await this.reorderAfterDelete(userId, context, todo.order, tx);
     });
-
-    await this.reorderAfterDelete(
-      userId,
-      this.getContext(todo.dayId, todo.timeBlockId),
-      todo.order,
-    );
   }
 
   async reorder(
