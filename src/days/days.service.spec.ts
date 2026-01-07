@@ -101,7 +101,12 @@ describe('DaysService', () => {
             orderBy: { order: 'asc' },
             include: {
               notes: { orderBy: { order: 'asc' } },
+              todos: { orderBy: { order: 'asc' } },
             },
+          },
+          todos: {
+            where: { timeBlockId: null },
+            orderBy: { order: 'asc' },
           },
         },
         orderBy: { date: 'asc' },
@@ -131,7 +136,12 @@ describe('DaysService', () => {
             orderBy: { order: 'asc' },
             include: {
               notes: { orderBy: { order: 'asc' } },
+              todos: { orderBy: { order: 'asc' } },
             },
+          },
+          todos: {
+            where: { timeBlockId: null },
+            orderBy: { order: 'asc' },
           },
         },
       });
@@ -167,7 +177,12 @@ describe('DaysService', () => {
             orderBy: { order: 'asc' },
             include: {
               notes: { orderBy: { order: 'asc' } },
+              todos: { orderBy: { order: 'asc' } },
             },
+          },
+          todos: {
+            where: { timeBlockId: null },
+            orderBy: { order: 'asc' },
           },
         },
       });
@@ -229,7 +244,12 @@ describe('DaysService', () => {
             orderBy: { order: 'asc' },
             include: {
               notes: { orderBy: { order: 'asc' } },
+              todos: { orderBy: { order: 'asc' } },
             },
+          },
+          todos: {
+            where: { timeBlockId: null },
+            orderBy: { order: 'asc' },
           },
         },
       });

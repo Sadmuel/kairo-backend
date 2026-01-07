@@ -1,0 +1,643 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { TodosService } from './todos.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { DaysService } from '../days/days.service';
+import { TimeBlocksService } from '../time-blocks/time-blocks.service';
+
+describe('TodosService', () => {
+  let service: TodosService;
+  let prisma: jest.Mocked<PrismaService>;
+  let daysService: jest.Mocked<DaysService>;
+  let timeBlocksService: jest.Mocked<TimeBlocksService>;
+
+  const mockDay = {
+    id: 'day-123',
+    date: new Date('2024-01-15'),
+    isCompleted: false,
+    userId: 'user-123',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockTimeBlock = {
+    id: 'tb-123',
+    name: 'Morning Routine',
+    startTime: '06:00',
+    endTime: '08:00',
+    isCompleted: false,
+    order: 0,
+    color: '#A5D8FF',
+    dayId: 'day-123',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    day: mockDay,
+    notes: [],
+  };
+
+  const mockTodo = {
+    id: 'todo-123',
+    title: 'Complete task',
+    isCompleted: false,
+    deadline: null,
+    order: 0,
+    userId: 'user-123',
+    dayId: null,
+    timeBlockId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    day: null,
+    timeBlock: null,
+  };
+
+  const mockPrismaService = {
+    todo: {
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+      delete: jest.fn(),
+    },
+    $transaction: jest.fn(),
+  };
+
+  const mockDaysService = {
+    findOne: jest.fn(),
+  };
+
+  const mockTimeBlocksService = {
+    findOne: jest.fn(),
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        TodosService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: DaysService, useValue: mockDaysService },
+        { provide: TimeBlocksService, useValue: mockTimeBlocksService },
+      ],
+    }).compile();
+
+    service = module.get<TodosService>(TodosService);
+    prisma = module.get(PrismaService);
+    daysService = module.get(DaysService);
+    timeBlocksService = module.get(TimeBlocksService);
+
+    jest.clearAllMocks();
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  describe('findAll', () => {
+    it('should return all user todos without filters', async () => {
+      const todos = [mockTodo];
+      mockPrismaService.todo.findMany.mockResolvedValue(todos);
+
+      const result = await service.findAll('user-123', {});
+
+      expect(result).toEqual(todos);
+      expect(prisma.todo.findMany).toHaveBeenCalledWith({
+        where: { userId: 'user-123' },
+        orderBy: { order: 'asc' },
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should filter by dayId', async () => {
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.todo.findMany.mockResolvedValue([]);
+
+      await service.findAll('user-123', { dayId: 'day-123' });
+
+      expect(daysService.findOne).toHaveBeenCalledWith('day-123', 'user-123');
+      expect(prisma.todo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-123', dayId: 'day-123', timeBlockId: null },
+        }),
+      );
+    });
+
+    it('should filter by timeBlockId', async () => {
+      mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+      mockPrismaService.todo.findMany.mockResolvedValue([]);
+
+      await service.findAll('user-123', { timeBlockId: 'tb-123' });
+
+      expect(timeBlocksService.findOne).toHaveBeenCalledWith(
+        'tb-123',
+        'user-123',
+      );
+      expect(prisma.todo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-123', timeBlockId: 'tb-123' },
+        }),
+      );
+    });
+
+    it('should filter inbox todos', async () => {
+      mockPrismaService.todo.findMany.mockResolvedValue([]);
+
+      await service.findAll('user-123', { inbox: true });
+
+      expect(prisma.todo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-123', dayId: null, timeBlockId: null },
+        }),
+      );
+    });
+
+    it('should filter by completion status', async () => {
+      mockPrismaService.todo.findMany.mockResolvedValue([]);
+
+      await service.findAll('user-123', { isCompleted: true });
+
+      expect(prisma.todo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-123', isCompleted: true },
+        }),
+      );
+    });
+
+    it('should throw NotFoundException when day not found', async () => {
+      mockDaysService.findOne.mockRejectedValue(
+        new NotFoundException('Day not found'),
+      );
+
+      await expect(
+        service.findAll('user-123', { dayId: 'nonexistent' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findOne', () => {
+    it('should return todo when found', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+
+      const result = await service.findOne('todo-123', 'user-123');
+
+      expect(result).toEqual(mockTodo);
+      expect(prisma.todo.findFirst).toHaveBeenCalledWith({
+        where: { id: 'todo-123', userId: 'user-123' },
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should throw NotFoundException when todo not found', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(null);
+
+      await expect(service.findOne('nonexistent', 'user-123')).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.findOne('nonexistent', 'user-123')).rejects.toThrow(
+        'Todo not found',
+      );
+    });
+  });
+
+  describe('create', () => {
+    it('should create inbox todo with auto-assigned order', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue({ order: 2 });
+      mockPrismaService.todo.create.mockResolvedValue(mockTodo);
+
+      await service.create('user-123', { title: 'New todo' });
+
+      expect(prisma.todo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            title: 'New todo',
+            order: 3,
+            userId: 'user-123',
+            dayId: null,
+            timeBlockId: null,
+          }),
+        }),
+      );
+    });
+
+    it('should create first todo with order 0', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(null);
+      mockPrismaService.todo.create.mockResolvedValue(mockTodo);
+
+      await service.create('user-123', { title: 'New todo' });
+
+      expect(prisma.todo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ order: 0 }),
+        }),
+      );
+    });
+
+    it('should use provided order when specified', async () => {
+      mockPrismaService.todo.create.mockResolvedValue(mockTodo);
+
+      await service.create('user-123', { title: 'New todo', order: 5 });
+
+      expect(prisma.todo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ order: 5 }),
+        }),
+      );
+    });
+
+    it('should create day todo', async () => {
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.todo.findFirst.mockResolvedValue(null);
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...mockTodo,
+        dayId: 'day-123',
+      });
+
+      await service.create('user-123', {
+        title: 'Day todo',
+        dayId: 'day-123',
+      });
+
+      expect(daysService.findOne).toHaveBeenCalledWith('day-123', 'user-123');
+      expect(prisma.todo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ dayId: 'day-123' }),
+        }),
+      );
+    });
+
+    it('should create time block todo', async () => {
+      mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+      mockPrismaService.todo.findFirst.mockResolvedValue(null);
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...mockTodo,
+        timeBlockId: 'tb-123',
+      });
+
+      await service.create('user-123', {
+        title: 'Block todo',
+        timeBlockId: 'tb-123',
+      });
+
+      expect(timeBlocksService.findOne).toHaveBeenCalledWith(
+        'tb-123',
+        'user-123',
+      );
+      expect(prisma.todo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ timeBlockId: 'tb-123' }),
+        }),
+      );
+    });
+
+    it('should throw BadRequestException when both dayId and timeBlockId provided', async () => {
+      await expect(
+        service.create('user-123', {
+          title: 'Invalid todo',
+          dayId: 'day-123',
+          timeBlockId: 'tb-123',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create('user-123', {
+          title: 'Invalid todo',
+          dayId: 'day-123',
+          timeBlockId: 'tb-123',
+        }),
+      ).rejects.toThrow('Todo cannot have both dayId and timeBlockId');
+    });
+
+    it('should throw NotFoundException when day not found', async () => {
+      mockDaysService.findOne.mockRejectedValue(
+        new NotFoundException('Day not found'),
+      );
+
+      await expect(
+        service.create('user-123', { title: 'Todo', dayId: 'nonexistent' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should create todo with deadline', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(null);
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...mockTodo,
+        deadline: new Date('2024-12-31'),
+      });
+
+      await service.create('user-123', {
+        title: 'Todo with deadline',
+        deadline: '2024-12-31T23:59:59.000Z',
+      });
+
+      expect(prisma.todo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            deadline: new Date('2024-12-31T23:59:59.000Z'),
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('update', () => {
+    it('should update todo title', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+      mockPrismaService.todo.update.mockResolvedValue({
+        ...mockTodo,
+        title: 'Updated title',
+      });
+
+      const result = await service.update('todo-123', 'user-123', {
+        title: 'Updated title',
+      });
+
+      expect(result.title).toBe('Updated title');
+      expect(prisma.todo.update).toHaveBeenCalledWith({
+        where: { id: 'todo-123' },
+        data: { title: 'Updated title' },
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should update todo completion status', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+      mockPrismaService.todo.update.mockResolvedValue({
+        ...mockTodo,
+        isCompleted: true,
+      });
+
+      const result = await service.update('todo-123', 'user-123', {
+        isCompleted: true,
+      });
+
+      expect(result.isCompleted).toBe(true);
+    });
+
+    it('should update todo deadline', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+      mockPrismaService.todo.update.mockResolvedValue({
+        ...mockTodo,
+        deadline: new Date('2024-12-31'),
+      });
+
+      await service.update('todo-123', 'user-123', {
+        deadline: '2024-12-31T23:59:59.000Z',
+      });
+
+      expect(prisma.todo.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { deadline: new Date('2024-12-31T23:59:59.000Z') },
+        }),
+      );
+    });
+
+    it('should remove deadline when set to null', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue({
+        ...mockTodo,
+        deadline: new Date(),
+      });
+      mockPrismaService.todo.update.mockResolvedValue({
+        ...mockTodo,
+        deadline: null,
+      });
+
+      await service.update('todo-123', 'user-123', { deadline: null });
+
+      expect(prisma.todo.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { deadline: null },
+        }),
+      );
+    });
+
+    it('should throw NotFoundException when todo not found', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.update('nonexistent', 'user-123', { title: 'Updated' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('remove', () => {
+    it('should delete todo and reorder remaining', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+      mockPrismaService.todo.delete.mockResolvedValue(mockTodo);
+      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 2 });
+
+      await service.remove('todo-123', 'user-123');
+
+      expect(prisma.todo.delete).toHaveBeenCalledWith({
+        where: { id: 'todo-123' },
+      });
+      expect(prisma.todo.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-123',
+          order: { gt: 0 },
+          dayId: null,
+          timeBlockId: null,
+        },
+        data: { order: { decrement: 1 } },
+      });
+    });
+
+    it('should reorder remaining day todos', async () => {
+      const dayTodo = { ...mockTodo, dayId: 'day-123', order: 1 };
+      mockPrismaService.todo.findFirst.mockResolvedValue(dayTodo);
+      mockPrismaService.todo.delete.mockResolvedValue(dayTodo);
+      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.remove('todo-123', 'user-123');
+
+      expect(prisma.todo.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-123',
+          order: { gt: 1 },
+          dayId: 'day-123',
+          timeBlockId: null,
+        },
+        data: { order: { decrement: 1 } },
+      });
+    });
+
+    it('should throw NotFoundException when todo not found', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(null);
+
+      await expect(service.remove('nonexistent', 'user-123')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('reorder', () => {
+    it('should reorder inbox todos', async () => {
+      mockPrismaService.$transaction.mockResolvedValue([]);
+      mockPrismaService.todo.findMany.mockResolvedValue([mockTodo]);
+
+      await service.reorder(
+        'user-123',
+        { inbox: true },
+        { orderedIds: ['todo-123', 'todo-456'] },
+      );
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should reorder day todos', async () => {
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.$transaction.mockResolvedValue([]);
+      mockPrismaService.todo.findMany.mockResolvedValue([]);
+
+      await service.reorder(
+        'user-123',
+        { dayId: 'day-123' },
+        { orderedIds: ['todo-123'] },
+      );
+
+      expect(daysService.findOne).toHaveBeenCalledWith('day-123', 'user-123');
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should reorder time block todos', async () => {
+      mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+      mockPrismaService.$transaction.mockResolvedValue([]);
+      mockPrismaService.todo.findMany.mockResolvedValue([]);
+
+      await service.reorder(
+        'user-123',
+        { timeBlockId: 'tb-123' },
+        { orderedIds: ['todo-123'] },
+      );
+
+      expect(timeBlocksService.findOne).toHaveBeenCalledWith(
+        'tb-123',
+        'user-123',
+      );
+    });
+
+    it('should throw BadRequestException when both context params provided', async () => {
+      await expect(
+        service.reorder(
+          'user-123',
+          { dayId: 'day-123', timeBlockId: 'tb-123' },
+          { orderedIds: ['todo-123'] },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException when day not found', async () => {
+      mockDaysService.findOne.mockRejectedValue(
+        new NotFoundException('Day not found'),
+      );
+
+      await expect(
+        service.reorder(
+          'user-123',
+          { dayId: 'nonexistent' },
+          { orderedIds: ['todo-123'] },
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('move', () => {
+    it('should move todo from inbox to day context', async () => {
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(mockTodo)
+        .mockResolvedValueOnce({ order: 1 });
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.todo.update.mockResolvedValue({
+        ...mockTodo,
+        dayId: 'day-123',
+        order: 2,
+      });
+      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.move('todo-123', 'user-123', {
+        targetDayId: 'day-123',
+      });
+
+      expect(result.dayId).toBe('day-123');
+      expect(prisma.todo.update).toHaveBeenCalledWith({
+        where: { id: 'todo-123' },
+        data: { dayId: 'day-123', timeBlockId: null, order: 2 },
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should move todo to time block context', async () => {
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(mockTodo)
+        .mockResolvedValueOnce(null);
+      mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+      mockPrismaService.todo.update.mockResolvedValue({
+        ...mockTodo,
+        timeBlockId: 'tb-123',
+        order: 0,
+      });
+      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.move('todo-123', 'user-123', {
+        targetTimeBlockId: 'tb-123',
+      });
+
+      expect(result.timeBlockId).toBe('tb-123');
+    });
+
+    it('should move todo to inbox (unassigned)', async () => {
+      const dayTodo = { ...mockTodo, dayId: 'day-123' };
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(dayTodo)
+        .mockResolvedValueOnce(null);
+      mockPrismaService.todo.update.mockResolvedValue({
+        ...mockTodo,
+        dayId: null,
+        timeBlockId: null,
+        order: 0,
+      });
+      mockPrismaService.todo.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.move('todo-123', 'user-123', {});
+
+      expect(result.dayId).toBeNull();
+      expect(result.timeBlockId).toBeNull();
+    });
+
+    it('should return unchanged todo when moving to same context', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+
+      const result = await service.move('todo-123', 'user-123', {});
+
+      expect(result).toEqual(mockTodo);
+      expect(prisma.todo.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException when both targets provided', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+
+      await expect(
+        service.move('todo-123', 'user-123', {
+          targetDayId: 'day-123',
+          targetTimeBlockId: 'tb-123',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException when todo not found', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.move('nonexistent', 'user-123', { targetDayId: 'day-123' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when target day not found', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(mockTodo);
+      mockDaysService.findOne.mockRejectedValue(
+        new NotFoundException('Day not found'),
+      );
+
+      await expect(
+        service.move('todo-123', 'user-123', { targetDayId: 'nonexistent' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+});
