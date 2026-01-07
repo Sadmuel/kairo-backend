@@ -5,11 +5,11 @@ early_access: false
 
 reviews:
   profile: 'assertive'
+  enable_free_tier_nitpicks: false
   auto_review:
     enabled: true
     drafts: false
     base_branches:
-      - main
       - development
 
   request_changes_workflow: false
