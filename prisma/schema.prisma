@@ -119,6 +119,8 @@ model Event {
 enum RecurrenceType {
   NONE
   DAILY
+  WEEKDAYS
+  WEEKENDS
   WEEKLY
   MONTHLY
   YEARLY

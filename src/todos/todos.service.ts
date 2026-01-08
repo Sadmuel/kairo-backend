@@ -83,9 +83,7 @@ export class TodosService {
 
   async create(userId: string, dto: CreateTodoDto) {
     if (dto.dayId && dto.timeBlockId) {
-      throw new BadRequestException(
-        'Todo cannot have both dayId and timeBlockId',
-      );
+      throw new BadRequestException('Todo cannot have both dayId and timeBlockId');
     }
 
     if (dto.dayId) {
@@ -157,9 +155,7 @@ export class TodosService {
     dto: ReorderTodosDto,
   ) {
     if (context.dayId && context.timeBlockId) {
-      throw new BadRequestException(
-        'Cannot specify both dayId and timeBlockId',
-      );
+      throw new BadRequestException('Cannot specify both dayId and timeBlockId');
     }
 
     if (context.dayId) {
@@ -226,9 +222,7 @@ export class TodosService {
 
   async move(id: string, userId: string, dto: MoveTodoDto) {
     if (dto.targetDayId && dto.targetTimeBlockId) {
-      throw new BadRequestException(
-        'Cannot specify both targetDayId and targetTimeBlockId',
-      );
+      throw new BadRequestException('Cannot specify both targetDayId and targetTimeBlockId');
     }
 
     // Validate targets exist before starting transaction
@@ -242,10 +236,7 @@ export class TodosService {
     const todo = await this.findOne(id, userId);
 
     const sourceContext = this.getContext(todo.dayId, todo.timeBlockId);
-    const targetContext = this.getContext(
-      dto.targetDayId ?? null,
-      dto.targetTimeBlockId ?? null,
-    );
+    const targetContext = this.getContext(dto.targetDayId ?? null, dto.targetTimeBlockId ?? null);
 
     const isSameContext = this.isSameContext(sourceContext, targetContext);
 
@@ -276,10 +267,7 @@ export class TodosService {
     });
   }
 
-  private getContext(
-    dayId: string | null,
-    timeBlockId: string | null,
-  ): TodoContext {
+  private getContext(dayId: string | null, timeBlockId: string | null): TodoContext {
     if (timeBlockId) {
       return { type: 'timeBlock', timeBlockId };
     }
@@ -293,8 +281,7 @@ export class TodosService {
     if (a.type !== b.type) return false;
     if (a.type === 'inbox') return true;
     if (a.type === 'day' && b.type === 'day') return a.dayId === b.dayId;
-    if (a.type === 'timeBlock' && b.type === 'timeBlock')
-      return a.timeBlockId === b.timeBlockId;
+    if (a.type === 'timeBlock' && b.type === 'timeBlock') return a.timeBlockId === b.timeBlockId;
     return false;
   }
 
