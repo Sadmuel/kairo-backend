@@ -1,9 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  NotFoundException,
-  BadRequestException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { TodosService } from './todos.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DaysService } from '../days/days.service';
@@ -131,10 +127,7 @@ describe('TodosService', () => {
 
       await service.findAll('user-123', { timeBlockId: 'tb-123' });
 
-      expect(timeBlocksService.findOne).toHaveBeenCalledWith(
-        'tb-123',
-        'user-123',
-      );
+      expect(timeBlocksService.findOne).toHaveBeenCalledWith('tb-123', 'user-123');
       expect(prisma.todo.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { userId: 'user-123', timeBlockId: 'tb-123' },
@@ -167,13 +160,11 @@ describe('TodosService', () => {
     });
 
     it('should throw NotFoundException when day not found', async () => {
-      mockDaysService.findOne.mockRejectedValue(
-        new NotFoundException('Day not found'),
-      );
+      mockDaysService.findOne.mockRejectedValue(new NotFoundException('Day not found'));
 
-      await expect(
-        service.findAll('user-123', { dayId: 'nonexistent' }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.findAll('user-123', { dayId: 'nonexistent' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -193,12 +184,8 @@ describe('TodosService', () => {
     it('should throw NotFoundException when todo not found', async () => {
       mockPrismaService.todo.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('nonexistent', 'user-123')).rejects.toThrow(
-        NotFoundException,
-      );
-      await expect(service.findOne('nonexistent', 'user-123')).rejects.toThrow(
-        'Todo not found',
-      );
+      await expect(service.findOne('nonexistent', 'user-123')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('nonexistent', 'user-123')).rejects.toThrow('Todo not found');
     });
   });
 
@@ -281,10 +268,7 @@ describe('TodosService', () => {
         timeBlockId: 'tb-123',
       });
 
-      expect(timeBlocksService.findOne).toHaveBeenCalledWith(
-        'tb-123',
-        'user-123',
-      );
+      expect(timeBlocksService.findOne).toHaveBeenCalledWith('tb-123', 'user-123');
       expect(prisma.todo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ timeBlockId: 'tb-123' }),
@@ -310,9 +294,7 @@ describe('TodosService', () => {
     });
 
     it('should throw NotFoundException when day not found', async () => {
-      mockDaysService.findOne.mockRejectedValue(
-        new NotFoundException('Day not found'),
-      );
+      mockDaysService.findOne.mockRejectedValue(new NotFoundException('Day not found'));
 
       await expect(
         service.create('user-123', { title: 'Todo', dayId: 'nonexistent' }),
@@ -415,9 +397,9 @@ describe('TodosService', () => {
     it('should throw NotFoundException when todo not found', async () => {
       mockPrismaService.todo.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.update('nonexistent', 'user-123', { title: 'Updated' }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.update('nonexistent', 'user-123', { title: 'Updated' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -494,9 +476,7 @@ describe('TodosService', () => {
     it('should throw NotFoundException when todo not found', async () => {
       mockPrismaService.todo.findFirst.mockResolvedValue(null);
 
-      await expect(service.remove('nonexistent', 'user-123')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.remove('nonexistent', 'user-123')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -508,11 +488,7 @@ describe('TodosService', () => {
         .mockResolvedValueOnce([mockTodo]); // final findAll
       mockPrismaService.$transaction.mockResolvedValue([]);
 
-      await service.reorder(
-        'user-123',
-        { inbox: true },
-        { orderedIds: ['todo-123', 'todo-456'] },
-      );
+      await service.reorder('user-123', { inbox: true }, { orderedIds: ['todo-123', 'todo-456'] });
 
       expect(prisma.$transaction).toHaveBeenCalled();
     });
@@ -524,11 +500,7 @@ describe('TodosService', () => {
         .mockResolvedValueOnce([]); // final findAll
       mockPrismaService.$transaction.mockResolvedValue([]);
 
-      await service.reorder(
-        'user-123',
-        { dayId: 'day-123' },
-        { orderedIds: ['todo-123'] },
-      );
+      await service.reorder('user-123', { dayId: 'day-123' }, { orderedIds: ['todo-123'] });
 
       expect(daysService.findOne).toHaveBeenCalledWith('day-123', 'user-123');
       expect(prisma.$transaction).toHaveBeenCalled();
@@ -541,16 +513,9 @@ describe('TodosService', () => {
         .mockResolvedValueOnce([]); // final findAll
       mockPrismaService.$transaction.mockResolvedValue([]);
 
-      await service.reorder(
-        'user-123',
-        { timeBlockId: 'tb-123' },
-        { orderedIds: ['todo-123'] },
-      );
+      await service.reorder('user-123', { timeBlockId: 'tb-123' }, { orderedIds: ['todo-123'] });
 
-      expect(timeBlocksService.findOne).toHaveBeenCalledWith(
-        'tb-123',
-        'user-123',
-      );
+      expect(timeBlocksService.findOne).toHaveBeenCalledWith('tb-123', 'user-123');
     });
 
     it('should throw BadRequestException when both context params provided', async () => {
@@ -564,16 +529,10 @@ describe('TodosService', () => {
     });
 
     it('should throw NotFoundException when day not found', async () => {
-      mockDaysService.findOne.mockRejectedValue(
-        new NotFoundException('Day not found'),
-      );
+      mockDaysService.findOne.mockRejectedValue(new NotFoundException('Day not found'));
 
       await expect(
-        service.reorder(
-          'user-123',
-          { dayId: 'nonexistent' },
-          { orderedIds: ['todo-123'] },
-        ),
+        service.reorder('user-123', { dayId: 'nonexistent' }, { orderedIds: ['todo-123'] }),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -595,11 +554,7 @@ describe('TodosService', () => {
       mockPrismaService.todo.findMany.mockResolvedValueOnce([]);
 
       await expect(
-        service.reorder(
-          'user-123',
-          { inbox: true },
-          { orderedIds: ['todo-123'] },
-        ),
+        service.reorder('user-123', { inbox: true }, { orderedIds: ['todo-123'] }),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -609,11 +564,7 @@ describe('TodosService', () => {
       mockPrismaService.todo.findMany.mockResolvedValueOnce([]);
 
       await expect(
-        service.reorder(
-          'user-123',
-          { dayId: 'day-123' },
-          { orderedIds: ['todo-123'] },
-        ),
+        service.reorder('user-123', { dayId: 'day-123' }, { orderedIds: ['todo-123'] }),
       ).rejects.toThrow(ForbiddenException);
     });
   });
@@ -735,9 +686,7 @@ describe('TodosService', () => {
     });
 
     it('should throw NotFoundException when target day not found', async () => {
-      mockDaysService.findOne.mockRejectedValue(
-        new NotFoundException('Day not found'),
-      );
+      mockDaysService.findOne.mockRejectedValue(new NotFoundException('Day not found'));
 
       await expect(
         service.move('todo-123', 'user-123', { targetDayId: 'nonexistent' }),

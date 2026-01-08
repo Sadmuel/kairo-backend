@@ -61,10 +61,7 @@ export class TodosController {
     description: 'Get only unassigned (inbox) todos',
   })
   @ApiResponse({ status: 200, description: 'Returns filtered todos in order' })
-  findAll(
-    @CurrentUser('id') userId: string,
-    @Query() filters: TodoFilterQueryDto,
-  ) {
+  findAll(@CurrentUser('id') userId: string, @Query() filters: TodoFilterQueryDto) {
     return this.todosService.findAll(userId, filters);
   }
 
@@ -73,10 +70,7 @@ export class TodosController {
   @ApiParam({ name: 'id', description: 'Todo UUID' })
   @ApiResponse({ status: 200, description: 'Returns todo with context info' })
   @ApiResponse({ status: 404, description: 'Todo not found' })
-  findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('id') userId: string,
-  ) {
+  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
     return this.todosService.findOne(id, userId);
   }
 
@@ -166,10 +160,7 @@ export class TodosController {
   @ApiParam({ name: 'id', description: 'Todo UUID' })
   @ApiResponse({ status: 204, description: 'Todo deleted successfully' })
   @ApiResponse({ status: 404, description: 'Todo not found' })
-  remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('id') userId: string,
-  ) {
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
     return this.todosService.remove(id, userId);
   }
 }

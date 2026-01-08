@@ -1,11 +1,4 @@
-import {
-  IsString,
-  IsUUID,
-  IsOptional,
-  IsInt,
-  Min,
-  IsDateString,
-} from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsInt, Min, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTodoDto {

@@ -214,10 +214,7 @@ describe('TodosController (e2e)', () => {
     });
 
     it('should return 401 without authentication', async () => {
-      await request(app.getHttpServer())
-        .post('/todos')
-        .send({ title: 'Test' })
-        .expect(401);
+      await request(app.getHttpServer()).post('/todos').send({ title: 'Test' }).expect(401);
     });
   });
 
@@ -317,9 +314,7 @@ describe('TodosController (e2e)', () => {
         .expect(200);
 
       for (let i = 0; i < response.body.length - 1; i++) {
-        expect(response.body[i].order).toBeLessThanOrEqual(
-          response.body[i + 1].order,
-        );
+        expect(response.body[i].order).toBeLessThanOrEqual(response.body[i + 1].order);
       }
     });
   });
