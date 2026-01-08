@@ -243,7 +243,7 @@ export class EventsService {
         result.setUTCDate(result.getUTCDate() + occurrenceIndex * 7);
         break;
 
-      case RecurrenceType.MONTHLY:
+      case RecurrenceType.MONTHLY: {
         // Handle last-day-of-month edge case
         // If base date is 31st and target month has fewer days, use last day
         const originalDay = baseDate.getUTCDate();
@@ -256,8 +256,9 @@ export class EventsService {
           result.setUTCDate(0);
         }
         break;
+      }
 
-      case RecurrenceType.YEARLY:
+      case RecurrenceType.YEARLY: {
         // Handle Feb 29 on non-leap years (becomes Feb 28)
         const originalMonth = baseDate.getUTCMonth();
         const originalDayOfMonth = baseDate.getUTCDate();
@@ -269,6 +270,7 @@ export class EventsService {
           result.setUTCMonth(originalMonth + 1, 0);
         }
         break;
+      }
 
       case RecurrenceType.NONE:
         // No recurrence, return base date

@@ -1,10 +1,11 @@
-import { IsString, IsOptional, IsBoolean, IsEnum, Matches } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsEnum, Matches, IsNotEmpty } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RecurrenceType } from '@prisma/client';
 
 export class CreateEventDto {
   @ApiProperty({ description: 'Event title' })
   @IsString()
+  @IsNotEmpty()
   title: string;
 
   @ApiProperty({
