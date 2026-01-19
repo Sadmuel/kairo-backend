@@ -185,11 +185,11 @@ export class DaysService {
     });
 
     if (completedDays.length === 0) {
+      // Only reset current state fields; preserve longestStreak as historical data
       await tx.user.update({
         where: { id: userId },
         data: {
           currentStreak: 0,
-          longestStreak: 0,
           lastCompletedDate: null,
         },
       });
