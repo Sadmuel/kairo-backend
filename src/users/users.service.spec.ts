@@ -343,11 +343,13 @@ describe('UsersService', () => {
       const mockDays = [
         {
           id: 'day-1',
+          date: new Date('2024-01-15'),
           isCompleted: true,
           timeBlocks: [{ id: 'tb-1', isCompleted: true }],
         },
         {
           id: 'day-2',
+          date: new Date('2024-01-16'),
           isCompleted: false,
           timeBlocks: [
             { id: 'tb-2', isCompleted: true },

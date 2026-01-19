@@ -159,14 +159,62 @@ export class UsersService {
     const allTimeBlocks = days.flatMap((d) => d.timeBlocks);
     const completedTimeBlocks = allTimeBlocks.filter((tb) => tb.isCompleted).length;
 
-    // Generate daily stats for each day of the week
+    // Generate daily stats for each day of the week using already-fetched data
+    // Create a map of days by date string for O(1) lookup
+    const daysByDate = new Map(
+      days.map((d) => [d.date.toISOString().split('T')[0], d]),
+    );
+
     const dailyStats = [];
     for (let i = 0; i < 7; i++) {
       const dayDate = new Date(weekStart);
       dayDate.setUTCDate(weekStart.getUTCDate() + i);
       const dayDateStr = dayDate.toISOString().split('T')[0];
-      const dayStats = await this.getDayStats(userId, dayDateStr);
-      dailyStats.push(dayStats);
+
+      const day = daysByDate.get(dayDateStr);
+      if (!day) {
+        dailyStats.push({
+          date: dayDateStr,
+          dayExists: false,
+          isCompleted: false,
+          completedTodos: 0,
+          totalTodos: 0,
+          todoCompletionRate: 0,
+          completedTimeBlocks: 0,
+          totalTimeBlocks: 0,
+          timeBlockCompletionRate: 0,
+        });
+        continue;
+      }
+
+      // Filter todos for this specific day
+      const dayTodos = todos.filter(
+        (t) =>
+          t.dayId === day.id ||
+          day.timeBlocks.some((tb) => tb.id === t.timeBlockId),
+      );
+      const dayCompletedTodos = dayTodos.filter((t) => t.isCompleted).length;
+      const dayCompletedTimeBlocks = day.timeBlocks.filter(
+        (tb) => tb.isCompleted,
+      ).length;
+
+      dailyStats.push({
+        date: dayDateStr,
+        dayExists: true,
+        isCompleted: day.isCompleted,
+        completedTodos: dayCompletedTodos,
+        totalTodos: dayTodos.length,
+        todoCompletionRate:
+          dayTodos.length > 0
+            ? Math.round((dayCompletedTodos / dayTodos.length) * 100)
+            : 0,
+        completedTimeBlocks: dayCompletedTimeBlocks,
+        totalTimeBlocks: day.timeBlocks.length,
+        timeBlockCompletionRate:
+          day.timeBlocks.length > 0
+            ? Math.round((dayCompletedTimeBlocks / day.timeBlocks.length) * 100)
+            : 0,
+      });
     }
 
     const formatDate = (d: Date) => d.toISOString().split('T')[0];
