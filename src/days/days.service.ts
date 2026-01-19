@@ -163,7 +163,7 @@ export class DaysService {
         });
 
         // Recalculate streak whenever day completion status changes
-        await this.updateUserStreak(client, day.userId, day.date);
+        await this.updateUserStreak(client, day.userId);
       }
     };
 
@@ -176,7 +176,7 @@ export class DaysService {
     }
   }
 
-  private async updateUserStreak(tx: TransactionClient, userId: string, _date: Date) {
+  private async updateUserStreak(tx: TransactionClient, userId: string) {
     // Fetch all completed days for this user, sorted by date descending
     const completedDays = await tx.day.findMany({
       where: { userId, isCompleted: true },
