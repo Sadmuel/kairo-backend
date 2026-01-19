@@ -161,9 +161,7 @@ export class UsersService {
 
     // Generate daily stats for each day of the week using already-fetched data
     // Create a map of days by date string for O(1) lookup
-    const daysByDate = new Map(
-      days.map((d) => [d.date.toISOString().split('T')[0], d]),
-    );
+    const daysByDate = new Map(days.map((d) => [d.date.toISOString().split('T')[0], d]));
 
     const dailyStats = [];
     for (let i = 0; i < 7; i++) {
@@ -189,14 +187,10 @@ export class UsersService {
 
       // Filter todos for this specific day
       const dayTodos = todos.filter(
-        (t) =>
-          t.dayId === day.id ||
-          day.timeBlocks.some((tb) => tb.id === t.timeBlockId),
+        (t) => t.dayId === day.id || day.timeBlocks.some((tb) => tb.id === t.timeBlockId),
       );
       const dayCompletedTodos = dayTodos.filter((t) => t.isCompleted).length;
-      const dayCompletedTimeBlocks = day.timeBlocks.filter(
-        (tb) => tb.isCompleted,
-      ).length;
+      const dayCompletedTimeBlocks = day.timeBlocks.filter((tb) => tb.isCompleted).length;
 
       dailyStats.push({
         date: dayDateStr,
@@ -205,9 +199,7 @@ export class UsersService {
         completedTodos: dayCompletedTodos,
         totalTodos: dayTodos.length,
         todoCompletionRate:
-          dayTodos.length > 0
-            ? Math.round((dayCompletedTodos / dayTodos.length) * 100)
-            : 0,
+          dayTodos.length > 0 ? Math.round((dayCompletedTodos / dayTodos.length) * 100) : 0,
         completedTimeBlocks: dayCompletedTimeBlocks,
         totalTimeBlocks: day.timeBlocks.length,
         timeBlockCompletionRate:
