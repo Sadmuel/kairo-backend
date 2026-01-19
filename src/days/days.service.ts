@@ -198,8 +198,9 @@ export class DaysService {
 
     // Calculate current streak (consecutive days ending at most recent completed day)
     // and longest streak (longest consecutive sequence ever)
-    const { currentStreak, longestStreak, lastCompletedDate } =
-      this.calculateStreaks(completedDays.map((d) => d.date));
+    const { currentStreak, longestStreak, lastCompletedDate } = this.calculateStreaks(
+      completedDays.map((d) => d.date),
+    );
 
     // Get current longest from user to preserve it if it was higher
     const user = await tx.user.findUnique({
