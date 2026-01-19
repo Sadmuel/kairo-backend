@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -28,6 +28,14 @@ describe('UsersService', () => {
       findMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+    },
+    day: {
+      count: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+    },
+    todo: {
+      findMany: jest.fn(),
     },
   };
 
@@ -205,6 +213,197 @@ describe('UsersService', () => {
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'user-456' },
       });
+    });
+  });
+
+  describe('getStats', () => {
+    it('should return user stats with streak data', async () => {
+      const userWithStreak = {
+        ...mockUser,
+        currentStreak: 5,
+        longestStreak: 10,
+        lastCompletedDate: new Date('2024-01-15'),
+      };
+      mockPrismaService.user.findUnique.mockResolvedValue(userWithStreak);
+      mockPrismaService.day.count
+        .mockResolvedValueOnce(20) // totalDays
+        .mockResolvedValueOnce(15); // completedDays
+
+      const result = await service.getStats('user-123');
+
+      expect(result).toEqual({
+        currentStreak: 5,
+        longestStreak: 10,
+        lastCompletedDate: new Date('2024-01-15'),
+        totalCompletedDays: 15,
+        totalDays: 20,
+        overallDayCompletionRate: 75,
+      });
+    });
+
+    it('should throw NotFoundException when user not found', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.getStats('nonexistent')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should return 0 completion rate when no days exist', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      mockPrismaService.day.count
+        .mockResolvedValueOnce(0) // totalDays
+        .mockResolvedValueOnce(0); // completedDays
+
+      const result = await service.getStats('user-123');
+
+      expect(result.overallDayCompletionRate).toBe(0);
+      expect(result.totalDays).toBe(0);
+    });
+  });
+
+  describe('getDayStats', () => {
+    const mockDay = {
+      id: 'day-123',
+      date: new Date('2024-01-15'),
+      isCompleted: true,
+      userId: 'user-123',
+      timeBlocks: [
+        { id: 'tb-1', isCompleted: true },
+        { id: 'tb-2', isCompleted: false },
+      ],
+    };
+
+    it('should return stats for existing day', async () => {
+      mockPrismaService.day.findUnique.mockResolvedValue(mockDay);
+      mockPrismaService.todo.findMany.mockResolvedValue([
+        { id: 'todo-1', isCompleted: true },
+        { id: 'todo-2', isCompleted: true },
+        { id: 'todo-3', isCompleted: false },
+      ]);
+
+      const result = await service.getDayStats('user-123', '2024-01-15');
+
+      expect(result).toEqual({
+        date: '2024-01-15',
+        dayExists: true,
+        isCompleted: true,
+        completedTodos: 2,
+        totalTodos: 3,
+        todoCompletionRate: 67,
+        completedTimeBlocks: 1,
+        totalTimeBlocks: 2,
+        timeBlockCompletionRate: 50,
+      });
+    });
+
+    it('should return empty stats when day does not exist', async () => {
+      mockPrismaService.day.findUnique.mockResolvedValue(null);
+
+      const result = await service.getDayStats('user-123', '2024-01-15');
+
+      expect(result).toEqual({
+        date: '2024-01-15',
+        dayExists: false,
+        isCompleted: false,
+        completedTodos: 0,
+        totalTodos: 0,
+        todoCompletionRate: 0,
+        completedTimeBlocks: 0,
+        totalTimeBlocks: 0,
+        timeBlockCompletionRate: 0,
+      });
+    });
+
+    it('should return 0 rates when no todos or time blocks', async () => {
+      mockPrismaService.day.findUnique.mockResolvedValue({
+        ...mockDay,
+        timeBlocks: [],
+      });
+      mockPrismaService.todo.findMany.mockResolvedValue([]);
+
+      const result = await service.getDayStats('user-123', '2024-01-15');
+
+      expect(result.todoCompletionRate).toBe(0);
+      expect(result.timeBlockCompletionRate).toBe(0);
+    });
+  });
+
+  describe('getWeekStats', () => {
+    it('should calculate correct ISO week boundaries (Monday-Sunday)', async () => {
+      // 2024-01-17 is a Wednesday
+      mockPrismaService.day.findMany.mockResolvedValue([]);
+      mockPrismaService.day.findUnique.mockResolvedValue(null);
+
+      const result = await service.getWeekStats('user-123', '2024-01-17');
+
+      expect(result.weekStart).toBe('2024-01-15'); // Monday
+      expect(result.weekEnd).toBe('2024-01-21'); // Sunday
+    });
+
+    it('should aggregate stats from all days in the week', async () => {
+      const mockDays = [
+        {
+          id: 'day-1',
+          date: new Date('2024-01-15'),
+          isCompleted: true,
+          timeBlocks: [{ id: 'tb-1', isCompleted: true }],
+        },
+        {
+          id: 'day-2',
+          date: new Date('2024-01-16'),
+          isCompleted: false,
+          timeBlocks: [
+            { id: 'tb-2', isCompleted: true },
+            { id: 'tb-3', isCompleted: false },
+          ],
+        },
+      ];
+      mockPrismaService.day.findMany.mockResolvedValue(mockDays);
+      mockPrismaService.todo.findMany.mockResolvedValue([
+        { id: 'todo-1', isCompleted: true },
+        { id: 'todo-2', isCompleted: false },
+      ]);
+      mockPrismaService.day.findUnique.mockResolvedValue(null);
+
+      const result = await service.getWeekStats('user-123', '2024-01-17');
+
+      expect(result.completedDays).toBe(1);
+      expect(result.totalDays).toBe(2);
+      expect(result.completedTodos).toBe(1);
+      expect(result.totalTodos).toBe(2);
+      expect(result.completedTimeBlocks).toBe(2);
+      expect(result.totalTimeBlocks).toBe(3);
+    });
+
+    it('should include dailyStats for all 7 days', async () => {
+      mockPrismaService.day.findMany.mockResolvedValue([]);
+      mockPrismaService.day.findUnique.mockResolvedValue(null);
+
+      const result = await service.getWeekStats('user-123', '2024-01-17');
+
+      expect(result.dailyStats).toHaveLength(7);
+    });
+
+    it('should return empty aggregates when no days in week', async () => {
+      mockPrismaService.day.findMany.mockResolvedValue([]);
+      mockPrismaService.day.findUnique.mockResolvedValue(null);
+
+      const result = await service.getWeekStats('user-123', '2024-01-17');
+
+      expect(result.completedDays).toBe(0);
+      expect(result.totalDays).toBe(0);
+      expect(result.todoCompletionRate).toBe(0);
+      expect(result.timeBlockCompletionRate).toBe(0);
+    });
+
+    it('should handle Sunday correctly (start of week is previous Monday)', async () => {
+      // 2024-01-21 is a Sunday
+      mockPrismaService.day.findMany.mockResolvedValue([]);
+      mockPrismaService.day.findUnique.mockResolvedValue(null);
+
+      const result = await service.getWeekStats('user-123', '2024-01-21');
+
+      expect(result.weekStart).toBe('2024-01-15'); // Previous Monday
+      expect(result.weekEnd).toBe('2024-01-21'); // Sunday
     });
   });
 });

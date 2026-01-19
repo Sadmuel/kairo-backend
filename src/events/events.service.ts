@@ -214,8 +214,7 @@ export class EventsService {
 
       if (shouldInclude) {
         // Check if this is the original event date
-        const isOriginal =
-          currentDate.getTime() === baseDate.getTime() && isFirstOccurrence;
+        const isOriginal = currentDate.getTime() === baseDate.getTime() && isFirstOccurrence;
         occurrences.push(this.toOccurrence(event, new Date(currentDate), !isOriginal));
         if (isOriginal) isFirstOccurrence = false;
       }
