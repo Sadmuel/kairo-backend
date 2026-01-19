@@ -162,9 +162,8 @@ export class DaysService {
           data: { isCompleted: allCompleted },
         });
 
-        if (allCompleted) {
-          await this.updateUserStreak(client, day.userId, day.date);
-        }
+        // Recalculate streak whenever day completion status changes
+        await this.updateUserStreak(client, day.userId);
       }
     };
 
@@ -177,36 +176,94 @@ export class DaysService {
     }
   }
 
-  private async updateUserStreak(tx: TransactionClient, userId: string, date: Date) {
-    const user = await tx.user.findUnique({
-      where: { id: userId },
+  private async updateUserStreak(tx: TransactionClient, userId: string) {
+    // Fetch all completed days for this user, sorted by date descending
+    const completedDays = await tx.day.findMany({
+      where: { userId, isCompleted: true },
+      orderBy: { date: 'desc' },
+      select: { date: true },
     });
 
-    if (!user) return;
+    if (completedDays.length === 0) {
+      // Only reset current state fields; preserve longestStreak as historical data
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          currentStreak: 0,
+          lastCompletedDate: null,
+        },
+      });
+      return;
+    }
 
-    const isConsecutive =
-      user.lastCompletedDate && this.isConsecutiveDay(user.lastCompletedDate, date);
+    // Calculate current streak (consecutive days ending at most recent completed day)
+    // and longest streak (longest consecutive sequence ever)
+    const { currentStreak, longestStreak, lastCompletedDate } =
+      this.calculateStreaks(completedDays.map((d) => d.date));
 
-    const newStreak = isConsecutive ? user.currentStreak + 1 : 1;
-    const newLongest = Math.max(newStreak, user.longestStreak);
+    // Get current longest from user to preserve it if it was higher
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { longestStreak: true },
+    });
+
+    const finalLongestStreak = Math.max(longestStreak, user?.longestStreak ?? 0);
 
     await tx.user.update({
       where: { id: userId },
       data: {
-        currentStreak: newStreak,
-        longestStreak: newLongest,
-        lastCompletedDate: date,
+        currentStreak,
+        longestStreak: finalLongestStreak,
+        lastCompletedDate,
       },
     });
   }
 
   /**
-   * Checks if lastCompleted is exactly one UTC day before current.
+   * Calculate current streak and longest streak from a list of completed dates.
+   * Dates should be sorted in descending order (most recent first).
    */
-  private isConsecutiveDay(lastCompleted: Date, current: Date): boolean {
-    // Calculate the difference in UTC days
-    const lastUtcDays = Math.floor(lastCompleted.getTime() / (1000 * 60 * 60 * 24));
-    const currentUtcDays = Math.floor(current.getTime() / (1000 * 60 * 60 * 24));
-    return currentUtcDays - lastUtcDays === 1;
+  private calculateStreaks(dates: Date[]): {
+    currentStreak: number;
+    longestStreak: number;
+    lastCompletedDate: Date;
+  } {
+    if (dates.length === 0) {
+      return { currentStreak: 0, longestStreak: 0, lastCompletedDate: null as unknown as Date };
+    }
+
+    // Convert dates to UTC day numbers for easy comparison
+    const dayNumbers = dates
+      .map((d) => Math.floor(d.getTime() / (1000 * 60 * 60 * 24)))
+      .sort((a, b) => b - a); // Sort descending (most recent first)
+
+    // Remove duplicates (same day)
+    const uniqueDays = [...new Set(dayNumbers)];
+
+    const lastCompletedDate = dates[0];
+
+    // Calculate current streak (consecutive days from the most recent)
+    let currentStreak = 1;
+    for (let i = 1; i < uniqueDays.length; i++) {
+      if (uniqueDays[i - 1] - uniqueDays[i] === 1) {
+        currentStreak++;
+      } else {
+        break;
+      }
+    }
+
+    // Calculate longest streak
+    let longestStreak = 1;
+    let tempStreak = 1;
+    for (let i = 1; i < uniqueDays.length; i++) {
+      if (uniqueDays[i - 1] - uniqueDays[i] === 1) {
+        tempStreak++;
+        longestStreak = Math.max(longestStreak, tempStreak);
+      } else {
+        tempStreak = 1;
+      }
+    }
+
+    return { currentStreak, longestStreak, lastCompletedDate };
   }
 }

@@ -288,6 +288,7 @@ describe('DaysService', () => {
     const mockTxClient = {
       day: {
         findUnique: jest.fn(),
+        findMany: jest.fn(),
         update: jest.fn(),
       },
       user: {
@@ -299,6 +300,7 @@ describe('DaysService', () => {
     beforeEach(() => {
       // Reset tx client mocks
       mockTxClient.day.findUnique.mockReset();
+      mockTxClient.day.findMany.mockReset();
       mockTxClient.day.update.mockReset();
       mockTxClient.user.findUnique.mockReset();
       mockTxClient.user.update.mockReset();
@@ -315,6 +317,7 @@ describe('DaysService', () => {
         ],
       };
       mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.findMany.mockResolvedValue([{ date: new Date('2024-01-15') }]);
       mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
       mockTxClient.user.findUnique.mockResolvedValue(mockUser);
       mockTxClient.user.update.mockResolvedValue(mockUser);
@@ -337,7 +340,9 @@ describe('DaysService', () => {
         ],
       };
       mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.findMany.mockResolvedValue([]); // No completed days after this one becomes incomplete
       mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: false });
+      mockTxClient.user.update.mockResolvedValue(mockUser);
 
       await service.updateCompletionStatus('day-123');
 
@@ -368,20 +373,24 @@ describe('DaysService', () => {
       expect(mockTxClient.day.update).not.toHaveBeenCalled();
     });
 
-    it('should update user streak when day becomes completed', async () => {
+    it('should update user streak when day becomes completed with consecutive days', async () => {
       const dayWithBlocks = {
         ...mockDay,
         date: new Date('2024-01-15'),
         timeBlocks: [{ ...mockTimeBlock, isCompleted: true }],
       };
-      const userWithYesterdayCompleted = {
-        ...mockUser,
-        lastCompletedDate: new Date('2024-01-14'),
-        currentStreak: 5,
-      };
+      // Simulate 6 consecutive completed days (Jan 10-15)
       mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.findMany.mockResolvedValue([
+        { date: new Date('2024-01-15') },
+        { date: new Date('2024-01-14') },
+        { date: new Date('2024-01-13') },
+        { date: new Date('2024-01-12') },
+        { date: new Date('2024-01-11') },
+        { date: new Date('2024-01-10') },
+      ]);
       mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
-      mockTxClient.user.findUnique.mockResolvedValue(userWithYesterdayCompleted);
+      mockTxClient.user.findUnique.mockResolvedValue({ ...mockUser, longestStreak: 10 });
       mockTxClient.user.update.mockResolvedValue(mockUser);
 
       await service.updateCompletionStatus('day-123');
@@ -390,8 +399,8 @@ describe('DaysService', () => {
         where: { id: 'user-123' },
         data: {
           currentStreak: 6,
-          longestStreak: 10,
-          lastCompletedDate: dayWithBlocks.date,
+          longestStreak: 10, // Preserved from user's existing longest
+          lastCompletedDate: new Date('2024-01-15'),
         },
       });
     });
@@ -402,14 +411,14 @@ describe('DaysService', () => {
         date: new Date('2024-01-20'),
         timeBlocks: [{ ...mockTimeBlock, isCompleted: true }],
       };
-      const userWithOldCompleted = {
-        ...mockUser,
-        lastCompletedDate: new Date('2024-01-10'),
-        currentStreak: 5,
-      };
+      // Only one completed day (the new one), previous were not consecutive
       mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.findMany.mockResolvedValue([
+        { date: new Date('2024-01-20') },
+        { date: new Date('2024-01-10') }, // Gap - not consecutive
+      ]);
       mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
-      mockTxClient.user.findUnique.mockResolvedValue(userWithOldCompleted);
+      mockTxClient.user.findUnique.mockResolvedValue({ ...mockUser, longestStreak: 10 });
       mockTxClient.user.update.mockResolvedValue(mockUser);
 
       await service.updateCompletionStatus('day-123');
@@ -419,7 +428,7 @@ describe('DaysService', () => {
         data: {
           currentStreak: 1,
           longestStreak: 10,
-          lastCompletedDate: dayWithBlocks.date,
+          lastCompletedDate: new Date('2024-01-20'),
         },
       });
     });
@@ -430,6 +439,7 @@ describe('DaysService', () => {
         timeBlocks: [{ ...mockTimeBlock, isCompleted: true }],
       };
       mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.findMany.mockResolvedValue([{ date: new Date('2024-01-15') }]);
       mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
       mockTxClient.user.findUnique.mockResolvedValue(mockUser);
       mockTxClient.user.update.mockResolvedValue(mockUser);
@@ -437,6 +447,39 @@ describe('DaysService', () => {
       await service.updateCompletionStatus('day-123');
 
       expect(mockPrismaService.$transaction).toHaveBeenCalled();
+    });
+
+    it('should calculate longest streak correctly from all completed days', async () => {
+      const dayWithBlocks = {
+        ...mockDay,
+        date: new Date('2024-01-25'),
+        timeBlocks: [{ ...mockTimeBlock, isCompleted: true }],
+      };
+      // Simulating: current streak of 2 (Jan 24-25), but longest was 4 (Jan 10-13)
+      mockTxClient.day.findUnique.mockResolvedValue(dayWithBlocks);
+      mockTxClient.day.findMany.mockResolvedValue([
+        { date: new Date('2024-01-25') },
+        { date: new Date('2024-01-24') },
+        // Gap
+        { date: new Date('2024-01-13') },
+        { date: new Date('2024-01-12') },
+        { date: new Date('2024-01-11') },
+        { date: new Date('2024-01-10') },
+      ]);
+      mockTxClient.day.update.mockResolvedValue({ ...mockDay, isCompleted: true });
+      mockTxClient.user.findUnique.mockResolvedValue({ ...mockUser, longestStreak: 3 }); // Previous longest was 3
+      mockTxClient.user.update.mockResolvedValue(mockUser);
+
+      await service.updateCompletionStatus('day-123');
+
+      expect(mockTxClient.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-123' },
+        data: {
+          currentStreak: 2,
+          longestStreak: 4, // New longest from the Jan 10-13 sequence
+          lastCompletedDate: new Date('2024-01-25'),
+        },
+      });
     });
   });
 });
