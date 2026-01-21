@@ -11,14 +11,21 @@ export class DashboardService {
     private eventsService: EventsService,
   ) {}
 
-  async getDashboard(userId: string): Promise<DashboardResponseDto> {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+  async getDashboard(userId: string, clientDate?: string): Promise<DashboardResponseDto> {
+    // Use client-provided date if valid, otherwise fall back to server date
+    let todayStr: string;
+    if (clientDate && /^\d{4}-\d{2}-\d{2}$/.test(clientDate)) {
+      todayStr = clientDate;
+    } else {
+      const today = new Date();
+      todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    }
 
     // Calculate 7 days from today for upcoming events
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 7);
-    const nextWeekStr = nextWeek.toISOString().split('T')[0];
+    const todayDate = new Date(todayStr + 'T00:00:00');
+    const nextWeek = new Date(todayDate);
+    nextWeek.setDate(todayDate.getDate() + 7);
+    const nextWeekStr = `${nextWeek.getFullYear()}-${String(nextWeek.getMonth() + 1).padStart(2, '0')}-${String(nextWeek.getDate()).padStart(2, '0')}`;
 
     // Execute all queries in parallel for performance
     const [user, todayDay, upcomingEvents, totalDays, completedDays] = await Promise.all([
