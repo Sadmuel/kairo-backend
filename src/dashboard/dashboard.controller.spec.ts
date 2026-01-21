@@ -92,16 +92,16 @@ describe('DashboardController', () => {
       const result = await controller.getDashboard('user-123');
 
       expect(result).toEqual(mockDashboardResponse);
-      expect(service.getDashboard).toHaveBeenCalledWith('user-123');
+      expect(service.getDashboard).toHaveBeenCalledWith('user-123', undefined);
       expect(service.getDashboard).toHaveBeenCalledTimes(1);
     });
 
-    it('should pass correct userId to service', async () => {
+    it('should pass correct userId and date to service', async () => {
       mockDashboardService.getDashboard.mockResolvedValue(mockDashboardResponse);
 
-      await controller.getDashboard('different-user-456');
+      await controller.getDashboard('different-user-456', '2026-01-20');
 
-      expect(service.getDashboard).toHaveBeenCalledWith('different-user-456');
+      expect(service.getDashboard).toHaveBeenCalledWith('different-user-456', '2026-01-20');
     });
 
     it('should propagate errors from service', async () => {
