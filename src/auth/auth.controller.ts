@@ -28,6 +28,19 @@ import { UserResponseDto } from 'src/users/dto';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  @Post('demo')
+  @ApiOperation({ summary: 'Create a demo account with seeded data' })
+  @ApiResponse({
+    status: 201,
+    description: 'Demo account created with seeded data',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  async demo() {
+    return this.authService.createDemoAccount();
+  }
+
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({

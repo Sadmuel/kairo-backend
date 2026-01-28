@@ -14,6 +14,7 @@ describe('AuthController', () => {
     id: 'user-123',
     email: 'test@example.com',
     name: 'Test User',
+    isDemoUser: false,
     currentStreak: 0,
     longestStreak: 0,
     lastCompletedDate: null,

@@ -4,6 +4,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { UsersService } from 'src/users/users.service';
 import { UserResponseDto } from 'src/users/dto';
 import { RegisterDto, LoginDto, AuthResponseDto } from 'src/auth/dto';
+import { DemoSeedService } from 'src/auth/demo-seed.service';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -31,6 +32,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private prisma: PrismaService,
+    private demoSeedService: DemoSeedService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<UserResponseDto> {
@@ -103,6 +105,31 @@ export class AuthService {
       return null;
     }
     return UserResponseDto.fromUser(user);
+  }
+
+  async createDemoAccount(): Promise<AuthResponseDto> {
+    const uuid = crypto.randomUUID();
+    const email = `demo-${uuid}@kairo.app`;
+    const password = crypto.randomBytes(32).toString('hex');
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        name: 'Demo User',
+        isDemoUser: true,
+      },
+    });
+
+    await this.demoSeedService.seedDemoData(user.id);
+
+    const tokens = await this.generateTokens(user.id, user.email);
+
+    return {
+      ...tokens,
+      user: UserResponseDto.fromUser(user),
+    };
   }
 
   private async generateTokens(
