@@ -11,6 +11,9 @@ export class UserResponseDto {
   @ApiProperty({ example: 'John Doe', description: 'User display name' })
   name: string;
 
+  @ApiProperty({ example: false, description: 'Whether this is a demo account' })
+  isDemoUser: boolean;
+
   @ApiProperty({ example: 5, description: 'Current consecutive days streak' })
   currentStreak: number;
 
@@ -31,6 +34,7 @@ export class UserResponseDto {
     dto.id = user.id;
     dto.email = user.email;
     dto.name = user.name;
+    dto.isDemoUser = user.isDemoUser;
     dto.currentStreak = user.currentStreak;
     dto.longestStreak = user.longestStreak;
     dto.lastCompletedDate = user.lastCompletedDate;
