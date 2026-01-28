@@ -4,6 +4,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DemoSeedService } from './demo-seed.service';
 import { UserResponseDto } from '../users/dto';
 import * as bcrypt from 'bcrypt';
 
@@ -16,11 +17,14 @@ describe('AuthService', () => {
   let mockJwtService: jest.Mocked<Partial<JwtService>>;
   let mockPrismaService: any;
 
+  let mockDemoSeedService: jest.Mocked<Partial<DemoSeedService>>;
+
   const mockUser = {
     id: 'user-123',
     email: 'test@example.com',
     passwordHash: 'hashed-password',
     name: 'Test User',
+    isDemoUser: false,
     currentStreak: 0,
     longestStreak: 0,
     lastCompletedDate: null,
@@ -54,6 +58,10 @@ describe('AuthService', () => {
       $transaction: jest.fn(),
     };
 
+    mockDemoSeedService = {
+      seedDemoData: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -68,6 +76,10 @@ describe('AuthService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: DemoSeedService,
+          useValue: mockDemoSeedService,
         },
       ],
     }).compile();
