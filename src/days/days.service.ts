@@ -177,14 +177,19 @@ export class DaysService {
   }
 
   private async updateUserStreak(tx: TransactionClient, userId: string) {
-    // Fetch all completed days for this user, sorted by date descending
-    const completedDays = await tx.day.findMany({
-      where: { userId, isCompleted: true },
+    // Fetch active days (with time blocks) for this user, sorted by date descending.
+    // Days without time blocks are skipped — they never break a streak.
+    // Limited to the last 365 days — longestStreak is preserved via Math.max with the stored value.
+    const cutoffDate = new Date();
+    cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
+
+    const activeDays = await tx.day.findMany({
+      where: { userId, timeBlocks: { some: {} }, date: { gte: cutoffDate } },
       orderBy: { date: 'desc' },
-      select: { date: true },
+      select: { date: true, isCompleted: true },
     });
 
-    if (completedDays.length === 0) {
+    if (activeDays.length === 0) {
       // Only reset current state fields; preserve longestStreak as historical data
       await tx.user.update({
         where: { id: userId },
@@ -196,11 +201,10 @@ export class DaysService {
       return;
     }
 
-    // Calculate current streak (consecutive days ending at most recent completed day)
-    // and longest streak (longest consecutive sequence ever)
-    const { currentStreak, longestStreak, lastCompletedDate } = this.calculateStreaks(
-      completedDays.map((d) => d.date),
-    );
+    // Calculate current streak (consecutive completed active days ending at most recent)
+    // and longest streak (longest consecutive completed sequence ever)
+    const { currentStreak, longestStreak, lastCompletedDate } =
+      this.calculateStreaks(activeDays);
 
     // Get current longest from user to preserve it if it was higher
     const user = await tx.user.findUnique({
@@ -221,47 +225,69 @@ export class DaysService {
   }
 
   /**
-   * Calculate current streak and longest streak from a list of completed dates.
-   * Dates should be sorted in descending order (most recent first).
+   * Calculate current streak and longest streak from a list of active days.
+   * Active days are days that have at least one time block.
+   * Days without time blocks are invisible and never break a streak.
    */
-  private calculateStreaks(dates: Date[]): {
+  private calculateStreaks(
+    activeDays: { date: Date; isCompleted: boolean }[],
+  ): {
     currentStreak: number;
     longestStreak: number;
-    lastCompletedDate: Date;
+    lastCompletedDate: Date | null;
   } {
-    if (dates.length === 0) {
-      return { currentStreak: 0, longestStreak: 0, lastCompletedDate: null as unknown as Date };
+    if (activeDays.length === 0) {
+      return { currentStreak: 0, longestStreak: 0, lastCompletedDate: null };
     }
 
-    // Convert dates to UTC day numbers for easy comparison
-    const dayNumbers = dates
-      .map((d) => Math.floor(d.getTime() / (1000 * 60 * 60 * 24)))
-      .sort((a, b) => b - a); // Sort descending (most recent first)
-
-    // Remove duplicates (same day)
-    const uniqueDays = [...new Set(dayNumbers)];
-
-    const lastCompletedDate = dates[0];
-
-    // Calculate current streak (consecutive days from the most recent)
-    let currentStreak = 1;
-    for (let i = 1; i < uniqueDays.length; i++) {
-      if (uniqueDays[i - 1] - uniqueDays[i] === 1) {
-        currentStreak++;
-      } else {
-        break;
+    // Deduplicate by UTC day number (activeDays already sorted desc by query)
+    const dayMap = new Map<number, boolean>();
+    for (const day of activeDays) {
+      const dayNum = Math.floor(day.date.getTime() / (1000 * 60 * 60 * 24));
+      if (!dayMap.has(dayNum)) {
+        dayMap.set(dayNum, day.isCompleted);
       }
     }
 
-    // Calculate longest streak
-    let longestStreak = 1;
-    let tempStreak = 1;
-    for (let i = 1; i < uniqueDays.length; i++) {
-      if (uniqueDays[i - 1] - uniqueDays[i] === 1) {
+    // Sorted descending by day number: [dayNum, isCompleted]
+    const uniqueDays = Array.from(dayMap.entries()).sort(
+      (a, b) => b[0] - a[0],
+    );
+
+    // Find last completed date
+    const lastCompletedEntry = activeDays.find((d) => d.isCompleted);
+    const lastCompletedDate = lastCompletedEntry?.date ?? null;
+
+    // Current streak: if the most recent active day is today and not yet
+    // completed, skip it (grace period — the user hasn't finished yet).
+    // Past uncompleted days always break the streak.
+    const todayDayNum = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+    let startIndex = 0;
+    if (!uniqueDays[0][1] && uniqueDays[0][0] === todayDayNum) {
+      startIndex = 1;
+    }
+
+    let currentStreak = 0;
+    if (startIndex < uniqueDays.length && uniqueDays[startIndex][1]) {
+      currentStreak = 1;
+      for (let i = startIndex + 1; i < uniqueDays.length; i++) {
+        if (uniqueDays[i][1]) {
+          currentStreak++;
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Longest streak: iterate chronologically (reverse of descending uniqueDays)
+    let longestStreak = 0;
+    let tempStreak = 0;
+    for (let i = uniqueDays.length - 1; i >= 0; i--) {
+      if (uniqueDays[i][1]) {
         tempStreak++;
         longestStreak = Math.max(longestStreak, tempStreak);
       } else {
-        tempStreak = 1;
+        tempStreak = 0;
       }
     }
 
