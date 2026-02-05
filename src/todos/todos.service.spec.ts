@@ -569,6 +569,217 @@ describe('TodosService', () => {
     });
   });
 
+  describe('duplicate', () => {
+    it('should duplicate a todo in the same inbox context', async () => {
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(mockTodo) // findOne
+        .mockResolvedValueOnce({ order: 2 }); // getNextOrder
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...mockTodo,
+        id: 'todo-new',
+        order: 3,
+      });
+
+      const result = await service.duplicate('todo-123', 'user-123', {});
+
+      expect(result.id).toBe('todo-new');
+      expect(prisma.todo.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: 'Complete task',
+          isCompleted: false,
+          deadline: null,
+          order: 3,
+          userId: 'user-123',
+          dayId: null,
+          timeBlockId: null,
+        }),
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should duplicate a day todo in same context', async () => {
+      const dayTodo = { ...mockTodo, dayId: 'day-123', timeBlockId: null };
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(dayTodo) // findOne
+        .mockResolvedValueOnce({ order: 1 }); // getNextOrder
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...dayTodo,
+        id: 'todo-new',
+        order: 2,
+      });
+
+      const result = await service.duplicate('todo-123', 'user-123', {});
+
+      expect(prisma.todo.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          dayId: 'day-123',
+          timeBlockId: null,
+        }),
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should duplicate a time block todo in same context', async () => {
+      const tbTodo = { ...mockTodo, dayId: null, timeBlockId: 'tb-123' };
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(tbTodo) // findOne
+        .mockResolvedValueOnce({ order: 0 }); // getNextOrder
+      mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...tbTodo,
+        id: 'todo-new',
+        order: 1,
+      });
+
+      const result = await service.duplicate('todo-123', 'user-123', {});
+
+      expect(prisma.todo.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          dayId: null,
+          timeBlockId: 'tb-123',
+        }),
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should duplicate to a different day', async () => {
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(mockTodo) // findOne
+        .mockResolvedValueOnce(null); // getNextOrder (no existing todos)
+      mockDaysService.findOne.mockResolvedValue(mockDay);
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...mockTodo,
+        id: 'todo-new',
+        dayId: 'day-123',
+        order: 0,
+      });
+
+      await service.duplicate('todo-123', 'user-123', { targetDayId: 'day-123' });
+
+      expect(prisma.todo.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          dayId: 'day-123',
+          timeBlockId: null,
+          order: 0,
+        }),
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should duplicate to a time block', async () => {
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(mockTodo) // findOne
+        .mockResolvedValueOnce(null); // getNextOrder
+      mockTimeBlocksService.findOne.mockResolvedValue(mockTimeBlock);
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...mockTodo,
+        id: 'todo-new',
+        dayId: null,
+        timeBlockId: 'tb-123',
+        order: 0,
+      });
+
+      await service.duplicate('todo-123', 'user-123', { targetTimeBlockId: 'tb-123' });
+
+      expect(prisma.todo.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          dayId: null,
+          timeBlockId: 'tb-123',
+        }),
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should always set isCompleted to false and deadline to null', async () => {
+      const completedTodo = {
+        ...mockTodo,
+        isCompleted: true,
+        deadline: new Date('2024-12-31'),
+      };
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(completedTodo) // findOne
+        .mockResolvedValueOnce(null); // getNextOrder
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...mockTodo,
+        id: 'todo-new',
+        isCompleted: false,
+        deadline: null,
+      });
+
+      await service.duplicate('todo-123', 'user-123', {});
+
+      expect(prisma.todo.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          isCompleted: false,
+          deadline: null,
+        }),
+        include: { day: true, timeBlock: true },
+      });
+    });
+
+    it('should throw BadRequestException when both targets provided', async () => {
+      await expect(
+        service.duplicate('todo-123', 'user-123', {
+          targetDayId: 'day-123',
+          targetTimeBlockId: 'tb-123',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.duplicate('todo-123', 'user-123', {
+          targetDayId: 'day-123',
+          targetTimeBlockId: 'tb-123',
+        }),
+      ).rejects.toThrow('Cannot specify both targetDayId and targetTimeBlockId');
+    });
+
+    it('should throw NotFoundException when source todo not found', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.duplicate('nonexistent', 'user-123', {}),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when target day not found', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValueOnce(mockTodo);
+      mockDaysService.findOne.mockRejectedValue(new NotFoundException('Day not found'));
+
+      await expect(
+        service.duplicate('todo-123', 'user-123', { targetDayId: 'nonexistent' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when target time block not found', async () => {
+      mockPrismaService.todo.findFirst.mockResolvedValueOnce(mockTodo);
+      mockTimeBlocksService.findOne.mockRejectedValue(
+        new NotFoundException('Time block not found'),
+      );
+
+      await expect(
+        service.duplicate('todo-123', 'user-123', { targetTimeBlockId: 'nonexistent' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should assign order 0 when target context is empty', async () => {
+      mockPrismaService.todo.findFirst
+        .mockResolvedValueOnce(mockTodo) // findOne
+        .mockResolvedValueOnce(null); // getNextOrder (no existing)
+      mockPrismaService.todo.create.mockResolvedValue({
+        ...mockTodo,
+        id: 'todo-new',
+        order: 0,
+      });
+
+      await service.duplicate('todo-123', 'user-123', {});
+
+      expect(prisma.todo.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ order: 0 }),
+        include: { day: true, timeBlock: true },
+      });
+    });
+  });
+
   describe('move', () => {
     // Helper to create transaction mock that executes the callback
     const setupTransactionMock = (txMocks: {

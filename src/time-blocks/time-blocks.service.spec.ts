@@ -433,4 +433,345 @@ describe('TimeBlocksService', () => {
       ).rejects.toThrow('Time block invalid-tb does not belong to this day');
     });
   });
+
+  describe('duplicate', () => {
+    const mockSourceWithRelations = {
+      ...mockTimeBlock,
+      notes: [
+        { id: 'note-1', content: 'Note 1', order: 0, timeBlockId: 'tb-123' },
+        { id: 'note-2', content: 'Note 2', order: 1, timeBlockId: 'tb-123' },
+      ],
+      todos: [
+        {
+          id: 'todo-1',
+          title: 'Todo 1',
+          isCompleted: true,
+          deadline: new Date('2024-12-31'),
+          order: 0,
+          userId: 'user-123',
+          timeBlockId: 'tb-123',
+        },
+      ],
+    };
+
+    const mockTargetDay = {
+      id: 'day-456',
+      date: new Date('2024-01-16'),
+      isCompleted: false,
+      userId: 'user-123',
+    };
+
+    const baseDuplicateDto = {
+      targetDayId: 'day-456',
+    };
+
+    it('should duplicate a time block to a target day with notes by default', async () => {
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockSourceWithRelations);
+      // Mock day.findFirst for target day validation
+      const mockDayFindFirst = jest.fn().mockResolvedValue(mockTargetDay);
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      const createdBlock = {
+        id: 'tb-new',
+        name: 'Morning Routine',
+        startTime: '06:00',
+        endTime: '08:00',
+        color: '#A5D8FF',
+        isCompleted: false,
+        order: 2,
+        dayId: 'day-456',
+      };
+
+      const mockTxClient = {
+        day: {
+          update: jest.fn().mockResolvedValue({ nextTimeBlockOrder: 3 }),
+        },
+        timeBlock: {
+          create: jest.fn().mockResolvedValue(createdBlock),
+          findUnique: jest.fn().mockResolvedValue({
+            ...createdBlock,
+            notes: [
+              { id: 'note-new-1', content: 'Note 1', order: 0 },
+              { id: 'note-new-2', content: 'Note 2', order: 1 },
+            ],
+            todos: [],
+          }),
+        },
+        note: {
+          createMany: jest.fn().mockResolvedValue({ count: 2 }),
+        },
+        todo: {
+          createMany: jest.fn(),
+        },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        return callback(mockTxClient);
+      });
+
+      const result = await service.duplicate('tb-123', 'user-123', baseDuplicateDto);
+
+      // Should create the time block with source data
+      expect(mockTxClient.timeBlock.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          name: 'Morning Routine',
+          startTime: '06:00',
+          endTime: '08:00',
+          color: '#A5D8FF',
+          isCompleted: false,
+          dayId: 'day-456',
+        }),
+      });
+
+      // Should duplicate notes by default
+      expect(mockTxClient.note.createMany).toHaveBeenCalledWith({
+        data: [
+          { content: 'Note 1', order: 0, timeBlockId: 'tb-new' },
+          { content: 'Note 2', order: 1, timeBlockId: 'tb-new' },
+        ],
+      });
+
+      // Should NOT duplicate todos by default
+      expect(mockTxClient.todo.createMany).not.toHaveBeenCalled();
+
+      expect(result).toBeDefined();
+    });
+
+    it('should exclude notes when includeNotes is false', async () => {
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockSourceWithRelations);
+      const mockDayFindFirst = jest.fn().mockResolvedValue(mockTargetDay);
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      const createdBlock = { ...mockTimeBlock, id: 'tb-new', dayId: 'day-456' };
+      const mockTxClient = {
+        day: {
+          update: jest.fn().mockResolvedValue({ nextTimeBlockOrder: 1 }),
+        },
+        timeBlock: {
+          create: jest.fn().mockResolvedValue(createdBlock),
+          findUnique: jest.fn().mockResolvedValue({ ...createdBlock, notes: [], todos: [] }),
+        },
+        note: { createMany: jest.fn() },
+        todo: { createMany: jest.fn() },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => callback(mockTxClient));
+
+      await service.duplicate('tb-123', 'user-123', {
+        ...baseDuplicateDto,
+        includeNotes: false,
+      });
+
+      expect(mockTxClient.note.createMany).not.toHaveBeenCalled();
+    });
+
+    it('should include todos when includeTodos is true', async () => {
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockSourceWithRelations);
+      const mockDayFindFirst = jest.fn().mockResolvedValue(mockTargetDay);
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      const createdBlock = { ...mockTimeBlock, id: 'tb-new', dayId: 'day-456' };
+      const mockTxClient = {
+        day: {
+          update: jest.fn().mockResolvedValue({ nextTimeBlockOrder: 1 }),
+        },
+        timeBlock: {
+          create: jest.fn().mockResolvedValue(createdBlock),
+          findUnique: jest.fn().mockResolvedValue({ ...createdBlock, notes: [], todos: [] }),
+        },
+        note: { createMany: jest.fn() },
+        todo: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => callback(mockTxClient));
+
+      await service.duplicate('tb-123', 'user-123', {
+        ...baseDuplicateDto,
+        includeTodos: true,
+      });
+
+      expect(mockTxClient.todo.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            title: 'Todo 1',
+            isCompleted: false,
+            deadline: null,
+            order: 0,
+            userId: 'user-123',
+            timeBlockId: 'tb-new',
+          },
+        ],
+      });
+    });
+
+    it('should use time overrides when provided', async () => {
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockSourceWithRelations);
+      const mockDayFindFirst = jest.fn().mockResolvedValue(mockTargetDay);
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      const createdBlock = { ...mockTimeBlock, id: 'tb-new', dayId: 'day-456' };
+      const mockTxClient = {
+        day: { update: jest.fn().mockResolvedValue({ nextTimeBlockOrder: 1 }) },
+        timeBlock: {
+          create: jest.fn().mockResolvedValue(createdBlock),
+          findUnique: jest.fn().mockResolvedValue({ ...createdBlock, notes: [], todos: [] }),
+        },
+        note: { createMany: jest.fn() },
+        todo: { createMany: jest.fn() },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => callback(mockTxClient));
+
+      await service.duplicate('tb-123', 'user-123', {
+        ...baseDuplicateDto,
+        startTime: '10:00',
+        endTime: '12:00',
+      });
+
+      expect(mockTxClient.timeBlock.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          startTime: '10:00',
+          endTime: '12:00',
+        }),
+      });
+    });
+
+    it('should throw BadRequestException when override times are invalid', async () => {
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockSourceWithRelations);
+      const mockDayFindFirst = jest.fn().mockResolvedValue(mockTargetDay);
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      await expect(
+        service.duplicate('tb-123', 'user-123', {
+          ...baseDuplicateDto,
+          startTime: '14:00',
+          endTime: '12:00',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.duplicate('tb-123', 'user-123', {
+          ...baseDuplicateDto,
+          startTime: '14:00',
+          endTime: '12:00',
+        }),
+      ).rejects.toThrow('End time must be after start time');
+    });
+
+    it('should duplicate to same day', async () => {
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockSourceWithRelations);
+      const mockDayFindFirst = jest.fn().mockResolvedValue({ ...mockDay });
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      const createdBlock = { ...mockTimeBlock, id: 'tb-new' };
+      const mockTxClient = {
+        day: { update: jest.fn().mockResolvedValue({ nextTimeBlockOrder: 2 }) },
+        timeBlock: {
+          create: jest.fn().mockResolvedValue(createdBlock),
+          findUnique: jest.fn().mockResolvedValue({ ...createdBlock, notes: [], todos: [] }),
+        },
+        note: { createMany: jest.fn() },
+        todo: { createMany: jest.fn() },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => callback(mockTxClient));
+
+      await service.duplicate('tb-123', 'user-123', { targetDayId: 'day-123' });
+
+      expect(mockTxClient.timeBlock.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          dayId: 'day-123',
+          order: 1,
+        }),
+      });
+    });
+
+    it('should always set isCompleted to false on duplicated block', async () => {
+      const completedSource = { ...mockSourceWithRelations, isCompleted: true };
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(completedSource);
+      const mockDayFindFirst = jest.fn().mockResolvedValue(mockTargetDay);
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      const createdBlock = { ...mockTimeBlock, id: 'tb-new', dayId: 'day-456' };
+      const mockTxClient = {
+        day: { update: jest.fn().mockResolvedValue({ nextTimeBlockOrder: 1 }) },
+        timeBlock: {
+          create: jest.fn().mockResolvedValue(createdBlock),
+          findUnique: jest.fn().mockResolvedValue({ ...createdBlock, notes: [], todos: [] }),
+        },
+        note: { createMany: jest.fn() },
+        todo: { createMany: jest.fn() },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => callback(mockTxClient));
+
+      await service.duplicate('tb-123', 'user-123', baseDuplicateDto);
+
+      expect(mockTxClient.timeBlock.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          isCompleted: false,
+        }),
+      });
+    });
+
+    it('should throw NotFoundException when source time block not found', async () => {
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.duplicate('nonexistent', 'user-123', baseDuplicateDto),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when source belongs to different user', async () => {
+      const otherUserBlock = {
+        ...mockSourceWithRelations,
+        day: { ...mockDay, userId: 'other-user' },
+      };
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(otherUserBlock);
+
+      await expect(
+        service.duplicate('tb-123', 'user-123', baseDuplicateDto),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when target day not found', async () => {
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockSourceWithRelations);
+      const mockDayFindFirst = jest.fn().mockResolvedValue(null);
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      await expect(
+        service.duplicate('tb-123', 'user-123', baseDuplicateDto),
+      ).rejects.toThrow(NotFoundException);
+      await expect(
+        service.duplicate('tb-123', 'user-123', baseDuplicateDto),
+      ).rejects.toThrow('Target day not found');
+    });
+
+    it('should throw NotFoundException when target day belongs to different user', async () => {
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockSourceWithRelations);
+      // findFirst with userId filter returns null for other user's day
+      const mockDayFindFirst = jest.fn().mockResolvedValue(null);
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      await expect(
+        service.duplicate('tb-123', 'user-123', { targetDayId: 'other-day' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should skip note duplication when source has no notes', async () => {
+      const sourceWithoutNotes = { ...mockSourceWithRelations, notes: [] };
+      mockPrismaService.timeBlock.findFirst.mockResolvedValue(sourceWithoutNotes);
+      const mockDayFindFirst = jest.fn().mockResolvedValue(mockTargetDay);
+      (prisma as any).day = { ...mockPrismaService.day, findFirst: mockDayFindFirst };
+
+      const createdBlock = { ...mockTimeBlock, id: 'tb-new', dayId: 'day-456' };
+      const mockTxClient = {
+        day: { update: jest.fn().mockResolvedValue({ nextTimeBlockOrder: 1 }) },
+        timeBlock: {
+          create: jest.fn().mockResolvedValue(createdBlock),
+          findUnique: jest.fn().mockResolvedValue({ ...createdBlock, notes: [], todos: [] }),
+        },
+        note: { createMany: jest.fn() },
+        todo: { createMany: jest.fn() },
+      };
+      mockPrismaService.$transaction.mockImplementation(async (callback) => callback(mockTxClient));
+
+      await service.duplicate('tb-123', 'user-123', baseDuplicateDto);
+
+      expect(mockTxClient.note.createMany).not.toHaveBeenCalled();
+    });
+  });
 });

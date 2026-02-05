@@ -27,6 +27,7 @@ import {
   ReorderTodosDto,
   MoveTodoDto,
   TodoFilterQueryDto,
+  DuplicateTodoDto,
 } from './dto';
 import { JwtAuthGuard } from 'src/auth/guards';
 import { CurrentUser } from 'src/auth/decorators';
@@ -84,6 +85,23 @@ export class TodosController {
   @ApiResponse({ status: 404, description: 'Day or time block not found' })
   create(@CurrentUser('id') userId: string, @Body() dto: CreateTodoDto) {
     return this.todosService.create(userId, dto);
+  }
+
+  @Post(':id/duplicate')
+  @ApiOperation({ summary: 'Duplicate a todo to a target context' })
+  @ApiParam({ name: 'id', description: 'Source todo UUID' })
+  @ApiResponse({ status: 201, description: 'Todo duplicated successfully' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid target (both targetDayId and targetTimeBlockId provided)',
+  })
+  @ApiResponse({ status: 404, description: 'Todo or target not found' })
+  duplicate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: DuplicateTodoDto,
+  ) {
+    return this.todosService.duplicate(id, userId, dto);
   }
 
   @Patch('reorder')

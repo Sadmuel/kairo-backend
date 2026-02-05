@@ -8,12 +8,7 @@ import {
   UseGuards,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from 'src/auth/auth.service';
 import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto } from 'src/auth/dto';
