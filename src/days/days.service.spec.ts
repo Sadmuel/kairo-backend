@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { DaysService } from './days.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TimeBlockTemplatesService } from '../time-block-templates/time-block-templates.service';
 
 describe('DaysService', () => {
   let service: DaysService;
@@ -59,6 +60,11 @@ describe('DaysService', () => {
     $transaction: jest.fn(),
   };
 
+  const mockTemplatesService = {
+    materializeForDateRange: jest.fn().mockResolvedValue(undefined),
+    materializeForDate: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -66,6 +72,10 @@ describe('DaysService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: TimeBlockTemplatesService,
+          useValue: mockTemplatesService,
         },
       ],
     }).compile();
