@@ -13,6 +13,7 @@ import {
   ReorderTodosDto,
   MoveTodoDto,
   TodoFilterQueryDto,
+  DuplicateTodoDto,
 } from './dto';
 import { Prisma } from '@prisma/client';
 
@@ -264,6 +265,54 @@ export class TodosService {
       await this.reorderAfterDelete(userId, sourceContext, todo.order, tx);
 
       return updated;
+    });
+  }
+
+  async duplicate(id: string, userId: string, dto: DuplicateTodoDto) {
+    // Mutual exclusivity check
+    if (dto.targetDayId && dto.targetTimeBlockId) {
+      throw new BadRequestException('Cannot specify both targetDayId and targetTimeBlockId');
+    }
+
+    // Find source todo
+    const source = await this.findOne(id, userId);
+
+    // Determine target context
+    let targetDayId = dto.targetDayId;
+    let targetTimeBlockId = dto.targetTimeBlockId;
+
+    // If no target specified, duplicate in same context
+    if (!targetDayId && !targetTimeBlockId) {
+      targetDayId = source.dayId ?? undefined;
+      targetTimeBlockId = source.timeBlockId ?? undefined;
+    }
+
+    // Validate target ownership
+    if (targetTimeBlockId) {
+      await this.timeBlocksService.findOne(targetTimeBlockId, userId);
+    } else if (targetDayId) {
+      await this.daysService.findOne(targetDayId, userId);
+    }
+
+    // Get target context and next order
+    const targetContext = this.getContext(targetDayId ?? null, targetTimeBlockId ?? null);
+    const nextOrder = await this.getNextOrder(userId, targetContext);
+
+    // Create duplicate
+    return this.prisma.todo.create({
+      data: {
+        title: source.title,
+        isCompleted: false, // Always start uncompleted
+        deadline: null, // Clear deadline for duplicated todos
+        order: nextOrder,
+        userId,
+        dayId: targetTimeBlockId ? null : (targetDayId ?? null),
+        timeBlockId: targetTimeBlockId ?? null,
+      },
+      include: {
+        day: true,
+        timeBlock: true,
+      },
     });
   }
 

@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService, TransactionClient } from 'src/prisma/prisma.service';
 import { DaysService } from 'src/days/days.service';
-import { CreateTimeBlockDto, UpdateTimeBlockDto, ReorderTimeBlocksDto } from './dto';
+import {
+  CreateTimeBlockDto,
+  UpdateTimeBlockDto,
+  ReorderTimeBlocksDto,
+  DuplicateTimeBlockDto,
+} from './dto';
 
 @Injectable()
 export class TimeBlocksService {
@@ -136,9 +141,10 @@ export class TimeBlocksService {
     const { dayId } = timeBlock;
 
     await this.prisma.$transaction(async (tx) => {
-      // Re-fetch within transaction for consistency
+      // Re-fetch within transaction for consistency, including day date for exclusion
       const block = await tx.timeBlock.findUnique({
         where: { id },
+        include: { day: { select: { date: true } } },
       });
 
       if (!block) {
@@ -148,6 +154,20 @@ export class TimeBlocksService {
       await tx.timeBlock.delete({
         where: { id },
       });
+
+      // If this was a recurring block, create an exclusion to prevent re-materialization
+      if (block.templateId) {
+        await tx.materializationExclusion.upsert({
+          where: {
+            templateId_date: {
+              templateId: block.templateId,
+              date: block.day.date,
+            },
+          },
+          create: { templateId: block.templateId, date: block.day.date },
+          update: {},
+        });
+      }
 
       // Reorder remaining time blocks within the same transaction
       await tx.timeBlock.updateMany({
@@ -201,5 +221,97 @@ export class TimeBlocksService {
     await this.prisma.$transaction([...tempUpdates, ...finalUpdates]);
 
     return this.findByDay(dayId, userId);
+  }
+
+  async duplicate(id: string, userId: string, dto: DuplicateTimeBlockDto) {
+    // Find source time block with relations
+    const source = await this.prisma.timeBlock.findFirst({
+      where: { id },
+      include: {
+        day: true,
+        notes: { orderBy: { order: 'asc' } },
+        todos: { orderBy: { order: 'asc' } },
+      },
+    });
+
+    if (!source || source.day.userId !== userId) {
+      throw new NotFoundException('Time block not found');
+    }
+
+    // Validate target day ownership
+    const targetDay = await this.prisma.day.findFirst({
+      where: { id: dto.targetDayId, userId },
+    });
+
+    if (!targetDay) {
+      throw new NotFoundException('Target day not found');
+    }
+
+    // Determine times (use overrides or source times)
+    const startTime = dto.startTime ?? source.startTime;
+    const endTime = dto.endTime ?? source.endTime;
+
+    // Validate time range
+    if (startTime >= endTime) {
+      throw new BadRequestException('End time must be after start time');
+    }
+
+    // Create duplicate in transaction
+    return this.prisma.$transaction(async (tx: TransactionClient) => {
+      // Get next order for target day
+      const day = await tx.day.update({
+        where: { id: dto.targetDayId },
+        data: { nextTimeBlockOrder: { increment: 1 } },
+        select: { nextTimeBlockOrder: true },
+      });
+      const order = day.nextTimeBlockOrder - 1;
+
+      // Create the time block
+      const newTimeBlock = await tx.timeBlock.create({
+        data: {
+          name: source.name,
+          startTime,
+          endTime,
+          color: source.color,
+          isCompleted: false, // Always start uncompleted
+          order,
+          dayId: dto.targetDayId,
+        },
+      });
+
+      // Optionally duplicate notes (default: true)
+      if (dto.includeNotes !== false && source.notes.length > 0) {
+        await tx.note.createMany({
+          data: source.notes.map((note, index) => ({
+            content: note.content,
+            order: index,
+            timeBlockId: newTimeBlock.id,
+          })),
+        });
+      }
+
+      // Optionally duplicate todos (default: false)
+      if (dto.includeTodos && source.todos.length > 0) {
+        await tx.todo.createMany({
+          data: source.todos.map((todo, index) => ({
+            title: todo.title,
+            isCompleted: false, // Always start uncompleted
+            deadline: null, // Clear deadline for duplicated todos
+            order: index,
+            userId,
+            timeBlockId: newTimeBlock.id,
+          })),
+        });
+      }
+
+      // Return with relations
+      return tx.timeBlock.findUnique({
+        where: { id: newTimeBlock.id },
+        include: {
+          notes: { orderBy: { order: 'asc' } },
+          todos: { orderBy: { order: 'asc' } },
+        },
+      });
+    });
   }
 }

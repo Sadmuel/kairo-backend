@@ -25,10 +25,7 @@ export class DashboardController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  getDashboard(
-    @CurrentUser('id') userId: string,
-    @Query('date') date?: string,
-  ) {
+  getDashboard(@CurrentUser('id') userId: string, @Query('date') date?: string) {
     return this.dashboardService.getDashboard(userId, date);
   }
 }
