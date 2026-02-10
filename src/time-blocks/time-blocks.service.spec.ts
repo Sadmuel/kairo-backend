@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { TimeBlocksService } from './time-blocks.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DaysService } from '../days/days.service';
@@ -66,6 +67,7 @@ describe('TimeBlocksService', () => {
           provide: DaysService,
           useValue: mockDaysService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 
@@ -353,15 +355,20 @@ describe('TimeBlocksService', () => {
     const mockTxClient = {
       timeBlock: {
         findUnique: jest.fn(),
+        findMany: jest.fn(),
         delete: jest.fn(),
-        updateMany: jest.fn(),
+        update: jest.fn(),
+      },
+      materializationExclusion: {
+        upsert: jest.fn(),
       },
     };
 
     beforeEach(() => {
       mockTxClient.timeBlock.findUnique.mockReset();
+      mockTxClient.timeBlock.findMany.mockReset();
       mockTxClient.timeBlock.delete.mockReset();
-      mockTxClient.timeBlock.updateMany.mockReset();
+      mockTxClient.timeBlock.update.mockReset();
       mockPrismaService.$transaction.mockImplementation((callback) => callback(mockTxClient));
     });
 
@@ -369,7 +376,11 @@ describe('TimeBlocksService', () => {
       mockPrismaService.timeBlock.findFirst.mockResolvedValue(mockTimeBlock);
       mockTxClient.timeBlock.findUnique.mockResolvedValue(mockTimeBlock);
       mockTxClient.timeBlock.delete.mockResolvedValue(mockTimeBlock);
-      mockTxClient.timeBlock.updateMany.mockResolvedValue({ count: 2 });
+      mockTxClient.timeBlock.findMany.mockResolvedValue([
+        { id: 'tb-200', order: 1 },
+        { id: 'tb-300', order: 2 },
+      ]);
+      mockTxClient.timeBlock.update.mockResolvedValue({});
       mockDaysService.updateCompletionStatus.mockResolvedValue(undefined);
 
       await service.remove('tb-123', 'user-123');
@@ -378,14 +389,22 @@ describe('TimeBlocksService', () => {
       expect(mockTxClient.timeBlock.delete).toHaveBeenCalledWith({
         where: { id: 'tb-123' },
       });
-      expect(mockTxClient.timeBlock.updateMany).toHaveBeenCalledWith({
+      expect(mockTxClient.timeBlock.findMany).toHaveBeenCalledWith({
         where: {
           dayId: 'day-123',
           order: { gt: 0 },
         },
-        data: {
-          order: { decrement: 1 },
-        },
+        orderBy: { order: 'asc' },
+        select: { id: true, order: true },
+      });
+      expect(mockTxClient.timeBlock.update).toHaveBeenCalledTimes(2);
+      expect(mockTxClient.timeBlock.update).toHaveBeenCalledWith({
+        where: { id: 'tb-200' },
+        data: { order: 0 },
+      });
+      expect(mockTxClient.timeBlock.update).toHaveBeenCalledWith({
+        where: { id: 'tb-300' },
+        data: { order: 1 },
       });
       // updateCompletionStatus should be called with the transaction client for atomicity
       expect(daysService.updateCompletionStatus).toHaveBeenCalledWith('day-123', mockTxClient);

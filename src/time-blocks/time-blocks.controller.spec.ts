@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { TimeBlocksController } from './time-blocks.controller';
 import { TimeBlocksService } from './time-blocks.service';
 
@@ -38,6 +39,7 @@ describe('TimeBlocksController', () => {
           provide: TimeBlocksService,
           useValue: mockTimeBlocksService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 

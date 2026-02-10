@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { EventsController } from './events.controller';
 import { EventsService, EventOccurrence } from './events.service';
 import { RecurrenceType } from '@prisma/client';
@@ -42,6 +43,7 @@ describe('EventsController', () => {
           provide: EventsService,
           useValue: mockEventsService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 
