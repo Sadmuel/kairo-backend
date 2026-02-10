@@ -5,12 +5,16 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService, TransactionClient } from 'src/prisma/prisma.service';
+import { TimeBlockTemplatesService } from 'src/time-block-templates/time-block-templates.service';
 import { CreateDayDto, UpdateDayDto } from './dto';
 import { parseDate } from './pipes';
 
 @Injectable()
 export class DaysService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private templatesService: TimeBlockTemplatesService,
+  ) {}
 
   async findByDateRange(userId: string, startDate: string, endDate: string) {
     const start = parseDate(startDate);
@@ -19,6 +23,8 @@ export class DaysService {
     if (start > end) {
       throw new BadRequestException('startDate must be less than or equal to endDate');
     }
+
+    await this.templatesService.materializeForDateRange(userId, start, end);
 
     return this.prisma.day.findMany({
       where: {
@@ -71,6 +77,8 @@ export class DaysService {
   }
 
   async findByDate(userId: string, date: string) {
+    await this.templatesService.materializeForDate(userId, parseDate(date));
+
     const day = await this.prisma.day.findUnique({
       where: {
         userId_date: { userId, date: parseDate(date) },
@@ -203,8 +211,7 @@ export class DaysService {
 
     // Calculate current streak (consecutive completed active days ending at most recent)
     // and longest streak (longest consecutive completed sequence ever)
-    const { currentStreak, longestStreak, lastCompletedDate } =
-      this.calculateStreaks(activeDays);
+    const { currentStreak, longestStreak, lastCompletedDate } = this.calculateStreaks(activeDays);
 
     // Get current longest from user to preserve it if it was higher
     const user = await tx.user.findUnique({
@@ -229,9 +236,7 @@ export class DaysService {
    * Active days are days that have at least one time block.
    * Days without time blocks are invisible and never break a streak.
    */
-  private calculateStreaks(
-    activeDays: { date: Date; isCompleted: boolean }[],
-  ): {
+  private calculateStreaks(activeDays: { date: Date; isCompleted: boolean }[]): {
     currentStreak: number;
     longestStreak: number;
     lastCompletedDate: Date | null;
@@ -250,9 +255,7 @@ export class DaysService {
     }
 
     // Sorted descending by day number: [dayNum, isCompleted]
-    const uniqueDays = Array.from(dayMap.entries()).sort(
-      (a, b) => b[0] - a[0],
-    );
+    const uniqueDays = Array.from(dayMap.entries()).sort((a, b) => b[0] - a[0]);
 
     // Find last completed date
     const lastCompletedEntry = activeDays.find((d) => d.isCompleted);

@@ -29,6 +29,7 @@ describe('TodosController', () => {
     remove: jest.fn(),
     reorder: jest.fn(),
     move: jest.fn(),
+    duplicate: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -258,6 +259,40 @@ describe('TodosController', () => {
         { dayId: undefined, timeBlockId: 'tb-123', inbox: false },
         { orderedIds: ['todo-123'] },
       );
+    });
+  });
+
+  describe('duplicate', () => {
+    it('should duplicate a todo in same context', async () => {
+      const duplicatedTodo = { ...mockTodo, id: 'todo-new', order: 1 };
+      mockTodosService.duplicate.mockResolvedValue(duplicatedTodo);
+
+      const result = await controller.duplicate('todo-123', 'user-123', {});
+
+      expect(result).toEqual(duplicatedTodo);
+      expect(service.duplicate).toHaveBeenCalledWith('todo-123', 'user-123', {});
+    });
+
+    it('should duplicate a todo to a target day', async () => {
+      const duplicatedTodo = { ...mockTodo, id: 'todo-new', dayId: 'day-456' };
+      mockTodosService.duplicate.mockResolvedValue(duplicatedTodo);
+      const dto = { targetDayId: 'day-456' };
+
+      const result = await controller.duplicate('todo-123', 'user-123', dto);
+
+      expect(result).toEqual(duplicatedTodo);
+      expect(service.duplicate).toHaveBeenCalledWith('todo-123', 'user-123', dto);
+    });
+
+    it('should duplicate a todo to a target time block', async () => {
+      const duplicatedTodo = { ...mockTodo, id: 'todo-new', timeBlockId: 'tb-456' };
+      mockTodosService.duplicate.mockResolvedValue(duplicatedTodo);
+      const dto = { targetTimeBlockId: 'tb-456' };
+
+      const result = await controller.duplicate('todo-123', 'user-123', dto);
+
+      expect(result).toEqual(duplicatedTodo);
+      expect(service.duplicate).toHaveBeenCalledWith('todo-123', 'user-123', dto);
     });
   });
 });

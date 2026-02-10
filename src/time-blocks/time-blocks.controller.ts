@@ -21,7 +21,12 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { TimeBlocksService } from './time-blocks.service';
-import { CreateTimeBlockDto, UpdateTimeBlockDto, ReorderTimeBlocksDto } from './dto';
+import {
+  CreateTimeBlockDto,
+  UpdateTimeBlockDto,
+  ReorderTimeBlocksDto,
+  DuplicateTimeBlockDto,
+} from './dto';
 import { JwtAuthGuard } from 'src/auth/guards';
 import { CurrentUser } from 'src/auth/decorators';
 
@@ -57,6 +62,20 @@ export class TimeBlocksController {
   @ApiResponse({ status: 404, description: 'Day not found' })
   create(@CurrentUser('id') userId: string, @Body() dto: CreateTimeBlockDto) {
     return this.timeBlocksService.create(userId, dto);
+  }
+
+  @Post(':id/duplicate')
+  @ApiOperation({ summary: 'Duplicate a time block to a target day' })
+  @ApiParam({ name: 'id', description: 'Source time block UUID' })
+  @ApiResponse({ status: 201, description: 'Time block duplicated successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid time range' })
+  @ApiResponse({ status: 404, description: 'Time block or target day not found' })
+  duplicate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: DuplicateTimeBlockDto,
+  ) {
+    return this.timeBlocksService.duplicate(id, userId, dto);
   }
 
   @Patch('reorder')

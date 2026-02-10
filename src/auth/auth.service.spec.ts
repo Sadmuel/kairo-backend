@@ -123,16 +123,18 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       // Setup transaction mock to execute the callback
-      mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
-        const txMock = {
-          refreshToken: {
-            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-            findMany: jest.fn().mockResolvedValue([]),
-            create: jest.fn().mockResolvedValue({}),
-          },
-        };
-        return callback(txMock);
-      });
+      mockPrismaService.$transaction.mockImplementation(
+        async (callback: (tx: any) => Promise<any>) => {
+          const txMock = {
+            refreshToken: {
+              deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+              findMany: jest.fn().mockResolvedValue([]),
+              create: jest.fn().mockResolvedValue({}),
+            },
+          };
+          return callback(txMock);
+        },
+      );
       mockJwtService.signAsync!.mockResolvedValue('access-token');
     });
 
@@ -194,16 +196,18 @@ describe('AuthService', () => {
 
       mockPrismaService.refreshToken.findUnique.mockResolvedValue(storedToken);
       mockPrismaService.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
-      mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
-        const txMock = {
-          refreshToken: {
-            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-            findMany: jest.fn().mockResolvedValue([]),
-            create: jest.fn().mockResolvedValue({}),
-          },
-        };
-        return callback(txMock);
-      });
+      mockPrismaService.$transaction.mockImplementation(
+        async (callback: (tx: any) => Promise<any>) => {
+          const txMock = {
+            refreshToken: {
+              deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+              findMany: jest.fn().mockResolvedValue([]),
+              create: jest.fn().mockResolvedValue({}),
+            },
+          };
+          return callback(txMock);
+        },
+      );
       mockJwtService.signAsync!.mockResolvedValue('new-access-token');
 
       const result = await service.refresh(refreshToken);
@@ -316,9 +320,11 @@ describe('AuthService', () => {
         },
       };
 
-      mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
-        return callback(txMock);
-      });
+      mockPrismaService.$transaction.mockImplementation(
+        async (callback: (tx: any) => Promise<any>) => {
+          return callback(txMock);
+        },
+      );
 
       await service.login({ email: mockUser.email, password: 'password123' });
 
@@ -349,9 +355,11 @@ describe('AuthService', () => {
         },
       };
 
-      mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
-        return callback(txMock);
-      });
+      mockPrismaService.$transaction.mockImplementation(
+        async (callback: (tx: any) => Promise<any>) => {
+          return callback(txMock);
+        },
+      );
 
       await service.login({ email: mockUser.email, password: 'password123' });
 
@@ -368,9 +376,11 @@ describe('AuthService', () => {
         },
       };
 
-      mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
-        return callback(txMock);
-      });
+      mockPrismaService.$transaction.mockImplementation(
+        async (callback: (tx: any) => Promise<any>) => {
+          return callback(txMock);
+        },
+      );
 
       await service.login({ email: mockUser.email, password: 'password123' });
 
