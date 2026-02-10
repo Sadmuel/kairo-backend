@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { DashboardService } from './dashboard.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService, EventOccurrence } from '../events/events.service';
@@ -92,6 +93,7 @@ describe('DashboardService', () => {
           provide: EventsService,
           useValue: mockEventsService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 

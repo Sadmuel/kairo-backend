@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 import { RecurrenceType } from '@prisma/client';
@@ -72,6 +73,7 @@ describe('DashboardController', () => {
           provide: DashboardService,
           useValue: mockDashboardService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 

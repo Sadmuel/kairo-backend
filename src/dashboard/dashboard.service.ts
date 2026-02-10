@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EventsService } from 'src/events/events.service';
 import { parseDate } from 'src/days/pipes';
@@ -9,9 +10,13 @@ export class DashboardService {
   constructor(
     private prisma: PrismaService,
     private eventsService: EventsService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
   ) {}
 
   async getDashboard(userId: string, clientDate?: string): Promise<DashboardResponseDto> {
+    this.logger.debug?.({ message: 'Dashboard requested', userId }, 'DashboardService');
+
     // Use client-provided date if valid, otherwise fall back to server date
     let todayStr: string;
     if (clientDate && /^\d{4}-\d{2}-\d{2}$/.test(clientDate)) {

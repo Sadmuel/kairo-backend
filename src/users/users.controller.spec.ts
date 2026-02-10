@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
@@ -20,6 +21,7 @@ describe('UsersController', () => {
           provide: UsersService,
           useValue: mockUsersService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 

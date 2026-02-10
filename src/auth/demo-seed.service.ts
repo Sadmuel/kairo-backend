@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
@@ -16,7 +17,11 @@ interface TimeBlockSeed {
 
 @Injectable()
 export class DemoSeedService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
+  ) {}
 
   async seedDemoData(userId: string): Promise<void> {
     const today = new Date();
@@ -66,6 +71,11 @@ export class DemoSeedService {
         },
       });
     });
+
+    this.logger.log(
+      { message: 'Demo data seeded', userId },
+      'DemoSeedService',
+    );
   }
 
   private async seedTimeBlocks(

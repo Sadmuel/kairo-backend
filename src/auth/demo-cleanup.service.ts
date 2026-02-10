@@ -1,12 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Inject, LoggerService } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class DemoCleanupService {
-  private readonly logger = new Logger(DemoCleanupService.name);
-
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
+  ) {}
 
   @Cron(CronExpression.EVERY_HOUR)
   async cleanupDemoUsers(): Promise<void> {
@@ -22,10 +25,19 @@ export class DemoCleanupService {
       });
 
       if (result.count > 0) {
-        this.logger.log(`Cleaned up ${result.count} expired demo user(s)`);
+        this.logger.log(
+          { message: `Cleaned up ${result.count} expired demo user(s)`, count: result.count },
+          'DemoCleanupService',
+        );
       }
     } catch (error) {
-      this.logger.error('Failed to cleanup demo users', error);
+      this.logger.error(
+        {
+          message: 'Failed to cleanup demo users',
+          error: error instanceof Error ? error.stack : error,
+        },
+        'DemoCleanupService',
+      );
     }
   }
 }

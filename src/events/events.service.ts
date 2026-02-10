@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateEventDto, UpdateEventDto } from './dto';
 import { Event, RecurrenceType } from '@prisma/client';
@@ -20,7 +21,11 @@ export interface EventOccurrence {
 
 @Injectable()
 export class EventsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
+  ) {}
 
   async findAll(userId: string): Promise<Event[]> {
     return this.prisma.event.findMany({
@@ -93,7 +98,7 @@ export class EventsService {
 
     this.validateRecurrenceConsistency(isRecurring, recurrenceType);
 
-    return this.prisma.event.create({
+    const event = await this.prisma.event.create({
       data: {
         title: dto.title,
         date: parseDate(dto.date),
@@ -103,6 +108,13 @@ export class EventsService {
         userId,
       },
     });
+
+    this.logger.log(
+      { message: 'Event created', eventId: event.id },
+      'EventsService',
+    );
+
+    return event;
   }
 
   async update(id: string, userId: string, dto: UpdateEventDto): Promise<Event> {
@@ -134,6 +146,8 @@ export class EventsService {
     await this.prisma.event.delete({
       where: { id },
     });
+
+    this.logger.log({ message: 'Event deleted', eventId: id }, 'EventsService');
   }
 
   private validateRecurrenceConsistency(

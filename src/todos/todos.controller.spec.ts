@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { TodosController } from './todos.controller';
 import { TodosService } from './todos.service';
 
@@ -40,6 +41,7 @@ describe('TodosController', () => {
           provide: TodosService,
           useValue: mockTodosService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 

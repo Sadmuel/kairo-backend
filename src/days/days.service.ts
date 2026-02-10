@@ -3,7 +3,10 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  Inject,
+  LoggerService,
 } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService, TransactionClient } from 'src/prisma/prisma.service';
 import { TimeBlockTemplatesService } from 'src/time-block-templates/time-block-templates.service';
 import { CreateDayDto, UpdateDayDto } from './dto';
@@ -14,6 +17,8 @@ export class DaysService {
   constructor(
     private prisma: PrismaService,
     private templatesService: TimeBlockTemplatesService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
   ) {}
 
   async findByDateRange(userId: string, startDate: string, endDate: string) {
@@ -112,7 +117,7 @@ export class DaysService {
       throw new ConflictException('Day already exists for this date');
     }
 
-    return this.prisma.day.create({
+    const day = await this.prisma.day.create({
       data: {
         date: parseDate(dto.date),
         userId,
@@ -121,6 +126,11 @@ export class DaysService {
         timeBlocks: true,
       },
     });
+    this.logger.log(
+      { message: 'Day created', dayId: day.id, date: dto.date },
+      'DaysService',
+    );
+    return day;
   }
 
   async update(id: string, userId: string, dto: UpdateDayDto) {
@@ -148,9 +158,13 @@ export class DaysService {
   async remove(id: string, userId: string) {
     await this.findOne(id, userId);
 
-    return this.prisma.day.delete({
+    await this.prisma.day.delete({
       where: { id },
     });
+    this.logger.log(
+      { message: 'Day deleted', dayId: id },
+      'DaysService',
+    );
   }
 
   async updateCompletionStatus(dayId: string, tx?: TransactionClient) {

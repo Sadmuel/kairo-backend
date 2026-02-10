@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { DaysController } from './days.controller';
 import { DaysService } from './days.service';
 
@@ -33,6 +34,7 @@ describe('DaysController', () => {
           provide: DaysService,
           useValue: mockDaysService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 

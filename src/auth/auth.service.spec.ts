@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -81,6 +82,7 @@ describe('AuthService', () => {
           provide: DemoSeedService,
           useValue: mockDemoSeedService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 
@@ -269,15 +271,18 @@ describe('AuthService', () => {
   describe('logout', () => {
     it('should delete refresh token on logout', async () => {
       const refreshToken = 'valid-refresh-token';
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue({ userId: 'user-123' });
       mockPrismaService.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
 
       await service.logout(refreshToken);
 
+      expect(mockPrismaService.refreshToken.findUnique).toHaveBeenCalled();
       expect(mockPrismaService.refreshToken.deleteMany).toHaveBeenCalled();
     });
 
     it('should not throw error when token does not exist', async () => {
       const refreshToken = 'non-existent-token';
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue(null);
       mockPrismaService.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
 
       await expect(service.logout(refreshToken)).resolves.not.toThrow();
