@@ -1,10 +1,12 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Inject, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UsersService } from 'src/users/users.service';
 import { UserResponseDto } from 'src/users/dto';
 import { RegisterDto, LoginDto, AuthResponseDto } from 'src/auth/dto';
 import { DemoSeedService } from 'src/auth/demo-seed.service';
+import { redactEmail } from 'src/common/logger/logger.utils';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -33,10 +35,16 @@ export class AuthService {
     private jwtService: JwtService,
     private prisma: PrismaService,
     private demoSeedService: DemoSeedService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<UserResponseDto> {
     const user = await this.usersService.create(registerDto);
+    this.logger.log(
+      { message: 'User registered', userId: user.id },
+      'AuthService',
+    );
     return UserResponseDto.fromUser(user);
   }
 
@@ -49,10 +57,18 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(loginDto.password, passwordHash);
 
     if (!user || !isPasswordValid) {
+      this.logger.warn(
+        { message: 'Login failed - invalid credentials', email: redactEmail(loginDto.email) },
+        'AuthService',
+      );
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const tokens = await this.generateTokens(user.id, user.email);
+    this.logger.log(
+      { message: 'User logged in', userId: user.id },
+      'AuthService',
+    );
 
     return {
       ...tokens,
@@ -85,6 +101,10 @@ export class AuthService {
     }
 
     const tokens = await this.generateTokens(storedToken.user.id, storedToken.user.email);
+    this.logger.log(
+      { message: 'Token refreshed', userId: storedToken.user.id },
+      'AuthService',
+    );
 
     return {
       ...tokens,
@@ -94,9 +114,17 @@ export class AuthService {
 
   async logout(refreshToken: string): Promise<void> {
     const tokenHash = hashToken(refreshToken);
+    const storedToken = await this.prisma.refreshToken.findUnique({
+      where: { token: tokenHash },
+      select: { userId: true },
+    });
     await this.prisma.refreshToken.deleteMany({
       where: { token: tokenHash },
     });
+    this.logger.log(
+      { message: 'User logged out', userId: storedToken?.userId },
+      'AuthService',
+    );
   }
 
   async getCurrentUser(userId: string): Promise<UserResponseDto | null> {
@@ -125,6 +153,10 @@ export class AuthService {
     await this.demoSeedService.seedDemoData(user.id);
 
     const tokens = await this.generateTokens(user.id, user.email);
+    this.logger.log(
+      { message: 'Demo account created', userId: user.id },
+      'AuthService',
+    );
 
     return {
       ...tokens,

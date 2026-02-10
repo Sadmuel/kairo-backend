@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ConflictException } from '@nestjs/common';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { DaysService } from './days.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TimeBlockTemplatesService } from '../time-block-templates/time-block-templates.service';
@@ -77,6 +78,7 @@ describe('DaysService', () => {
           provide: TimeBlockTemplatesService,
           useValue: mockTemplatesService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 

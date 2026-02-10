@@ -3,7 +3,10 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Inject,
+  LoggerService,
 } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { DaysService } from 'src/days/days.service';
 import { TimeBlocksService } from 'src/time-blocks/time-blocks.service';
@@ -28,6 +31,8 @@ type TodoContext =
 export class TodosService {
   constructor(
     private prisma: PrismaService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
     private daysService: DaysService,
     private timeBlocksService: TimeBlocksService,
   ) {}
@@ -102,7 +107,7 @@ export class TodosService {
       );
     }
 
-    return this.prisma.todo.create({
+    const todo = await this.prisma.todo.create({
       data: {
         title: dto.title,
         deadline: dto.deadline ? new Date(dto.deadline) : null,
@@ -116,6 +121,13 @@ export class TodosService {
         timeBlock: true,
       },
     });
+
+    this.logger.log(
+      { message: 'Todo created', todoId: todo.id },
+      'TodosService',
+    );
+
+    return todo;
   }
 
   async update(id: string, userId: string, dto: UpdateTodoDto) {
@@ -148,6 +160,8 @@ export class TodosService {
 
       await this.reorderAfterDelete(userId, context, todo.order, tx);
     });
+
+    this.logger.log({ message: 'Todo deleted', todoId: id }, 'TodosService');
   }
 
   async reorder(
@@ -264,6 +278,11 @@ export class TodosService {
 
       await this.reorderAfterDelete(userId, sourceContext, todo.order, tx);
 
+      this.logger.log(
+        { message: 'Todo moved', todoId: id, target: dto },
+        'TodosService',
+      );
+
       return updated;
     });
   }
@@ -299,7 +318,7 @@ export class TodosService {
     const nextOrder = await this.getNextOrder(userId, targetContext);
 
     // Create duplicate
-    return this.prisma.todo.create({
+    const duplicated = await this.prisma.todo.create({
       data: {
         title: source.title,
         isCompleted: false, // Always start uncompleted
@@ -314,6 +333,13 @@ export class TodosService {
         timeBlock: true,
       },
     });
+
+    this.logger.log(
+      { message: 'Todo duplicated', sourceId: id, newId: duplicated.id },
+      'TodosService',
+    );
+
+    return duplicated;
   }
 
   private getContext(dayId: string | null, timeBlockId: string | null): TodoContext {

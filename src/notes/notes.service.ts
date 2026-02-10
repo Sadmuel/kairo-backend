@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService, TransactionClient } from 'src/prisma/prisma.service';
 import { TimeBlocksService } from 'src/time-blocks/time-blocks.service';
 import { CreateNoteDto, UpdateNoteDto, ReorderNotesDto } from './dto';
@@ -8,6 +9,8 @@ export class NotesService {
   constructor(
     private prisma: PrismaService,
     private timeBlocksService: TimeBlocksService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
   ) {}
 
   async findByTimeBlock(timeBlockId: string, userId: string) {
@@ -41,17 +44,24 @@ export class NotesService {
 
     // If order is explicitly provided, use it directly
     if (dto.order !== undefined) {
-      return this.prisma.note.create({
+      const note = await this.prisma.note.create({
         data: {
           content: dto.content,
           order: dto.order,
           timeBlockId: dto.timeBlockId,
         },
       });
+
+      this.logger.log(
+        { message: 'Note created', noteId: note.id, timeBlockId: dto.timeBlockId },
+        'NotesService',
+      );
+
+      return note;
     }
 
     // Atomically get and increment the order counter, then create the note
-    return this.prisma.$transaction(async (tx: TransactionClient) => {
+    const note = await this.prisma.$transaction(async (tx: TransactionClient) => {
       const timeBlock = await tx.timeBlock.update({
         where: { id: dto.timeBlockId },
         data: { nextNoteOrder: { increment: 1 } },
@@ -67,6 +77,13 @@ export class NotesService {
         },
       });
     });
+
+    this.logger.log(
+      { message: 'Note created', noteId: note.id, timeBlockId: dto.timeBlockId },
+      'NotesService',
+    );
+
+    return note;
   }
 
   async update(id: string, userId: string, dto: UpdateNoteDto) {
@@ -96,17 +113,26 @@ export class NotesService {
         where: { id },
       });
 
-      // Reorder remaining notes within the same transaction
-      await tx.note.updateMany({
+      // Reorder remaining notes sequentially (lowest order first)
+      // to avoid unique constraint violation on (timeBlockId, order)
+      const notesToReorder = await tx.note.findMany({
         where: {
           timeBlockId: note.timeBlockId,
           order: { gt: note.order },
         },
-        data: {
-          order: { decrement: 1 },
-        },
+        orderBy: { order: 'asc' },
+        select: { id: true, order: true },
       });
+
+      for (const n of notesToReorder) {
+        await tx.note.update({
+          where: { id: n.id },
+          data: { order: n.order - 1 },
+        });
+      }
     });
+
+    this.logger.log({ message: 'Note deleted', noteId: id }, 'NotesService');
   }
 
   async reorder(userId: string, timeBlockId: string, dto: ReorderNotesDto) {

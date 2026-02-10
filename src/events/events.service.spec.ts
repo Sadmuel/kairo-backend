@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { EventsService } from './events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RecurrenceType } from '@prisma/client';
@@ -44,7 +45,11 @@ describe('EventsService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [EventsService, { provide: PrismaService, useValue: mockPrismaService }],
+      providers: [
+        EventsService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        mockLoggerProvider,
+      ],
     }).compile();
 
     service = module.get<EventsService>(EventsService);

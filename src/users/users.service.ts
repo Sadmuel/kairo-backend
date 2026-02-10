@@ -1,28 +1,43 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, Inject, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { CreateUserDto } from 'src/users/dto';
 import { parseDate } from 'src/days/pipes';
+import { redactEmail } from 'src/common/logger/logger.utils';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
+  ) {}
 
   async create(createUserDto: CreateUserDto) {
     const passwordHash = await bcrypt.hash(createUserDto.password, 10);
 
     try {
-      return await this.prisma.user.create({
+      const user = await this.prisma.user.create({
         data: {
           email: createUserDto.email.toLowerCase().trim(),
           passwordHash,
           name: createUserDto.name.trim(),
         },
       });
+      this.logger.log(
+        { message: 'User created', userId: user.id },
+        'UsersService',
+      );
+      return user;
     } catch (error) {
       // Handle unique constraint violation (P2002)
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        this.logger.warn(
+          { message: 'User creation failed - email exists', email: redactEmail(createUserDto.email) },
+          'UsersService',
+        );
         throw new ConflictException('Email already exists');
       }
       throw error;

@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService, TransactionClient } from 'src/prisma/prisma.service';
 import { DaysService } from 'src/days/days.service';
 import {
@@ -13,6 +14,8 @@ export class TimeBlocksService {
   constructor(
     private prisma: PrismaService,
     private daysService: DaysService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
   ) {}
 
   async findByDay(dayId: string, userId: string) {
@@ -60,7 +63,7 @@ export class TimeBlocksService {
           `A time block with order ${dto.order} already exists for this day`,
         );
       }
-      return this.prisma.timeBlock.create({
+      const created = await this.prisma.timeBlock.create({
         data: {
           name: dto.name,
           startTime: dto.startTime,
@@ -73,10 +76,15 @@ export class TimeBlocksService {
           notes: true,
         },
       });
+      this.logger.log(
+        { message: 'Time block created', timeBlockId: created.id, dayId: dto.dayId },
+        'TimeBlocksService',
+      );
+      return created;
     }
 
     // Atomically get and increment the order counter, then create the time block
-    return this.prisma.$transaction(async (tx: TransactionClient) => {
+    const result = await this.prisma.$transaction(async (tx: TransactionClient) => {
       const day = await tx.day.update({
         where: { id: dto.dayId },
         data: { nextTimeBlockOrder: { increment: 1 } },
@@ -98,6 +106,11 @@ export class TimeBlocksService {
         },
       });
     });
+    this.logger.log(
+      { message: 'Time block created', timeBlockId: result.id, dayId: dto.dayId },
+      'TimeBlocksService',
+    );
+    return result;
   }
 
   async update(id: string, userId: string, dto: UpdateTimeBlockDto) {
@@ -169,20 +182,31 @@ export class TimeBlocksService {
         });
       }
 
-      // Reorder remaining time blocks within the same transaction
-      await tx.timeBlock.updateMany({
+      // Reorder remaining time blocks sequentially (lowest order first)
+      // to avoid unique constraint violation on (dayId, order)
+      const blocksToReorder = await tx.timeBlock.findMany({
         where: {
           dayId: block.dayId,
           order: { gt: block.order },
         },
-        data: {
-          order: { decrement: 1 },
-        },
+        orderBy: { order: 'asc' },
+        select: { id: true, order: true },
       });
+
+      for (const b of blocksToReorder) {
+        await tx.timeBlock.update({
+          where: { id: b.id },
+          data: { order: b.order - 1 },
+        });
+      }
 
       // Update completion status within the same transaction for atomicity
       await this.daysService.updateCompletionStatus(dayId, tx);
     });
+    this.logger.log(
+      { message: 'Time block deleted', timeBlockId: id, dayId },
+      'TimeBlocksService',
+    );
   }
 
   async reorder(userId: string, dayId: string, dto: ReorderTimeBlocksDto) {
@@ -303,6 +327,11 @@ export class TimeBlocksService {
           })),
         });
       }
+
+      this.logger.log(
+        { message: 'Time block duplicated', sourceId: id, newId: newTimeBlock.id, targetDayId: dto.targetDayId },
+        'TimeBlocksService',
+      );
 
       // Return with relations
       return tx.timeBlock.findUnique({

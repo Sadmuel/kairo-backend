@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { TodosService } from './todos.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DaysService } from '../days/days.service';
@@ -77,6 +78,7 @@ describe('TodosService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: DaysService, useValue: mockDaysService },
         { provide: TimeBlocksService, useValue: mockTimeBlocksService },
+        mockLoggerProvider,
       ],
     }).compile();
 

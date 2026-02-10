@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService, TransactionClient } from 'src/prisma/prisma.service';
 import {
   CreateTimeBlockTemplateDto,
@@ -8,7 +9,11 @@ import {
 
 @Injectable()
 export class TimeBlockTemplatesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
+  ) {}
 
   async findAll(userId: string) {
     return this.prisma.timeBlockTemplate.findMany({
@@ -46,7 +51,7 @@ export class TimeBlockTemplatesService {
       throw new BadRequestException('daysOfWeek must contain unique values');
     }
 
-    return this.prisma.timeBlockTemplate.create({
+    const template = await this.prisma.timeBlockTemplate.create({
       data: {
         name: dto.name,
         startTime: dto.startTime,
@@ -67,6 +72,13 @@ export class TimeBlockTemplatesService {
         notes: { orderBy: { order: 'asc' } },
       },
     });
+
+    this.logger.log(
+      { message: 'Template created', templateId: template.id },
+      'TimeBlockTemplatesService',
+    );
+
+    return template;
   }
 
   async update(id: string, userId: string, dto: UpdateTimeBlockTemplateDto) {
@@ -106,6 +118,11 @@ export class TimeBlockTemplatesService {
     await this.prisma.timeBlockTemplate.delete({
       where: { id },
     });
+
+    this.logger.log(
+      { message: 'Template deleted', templateId: id },
+      'TimeBlockTemplatesService',
+    );
   }
 
   async deactivate(id: string, userId: string, dto: DeactivateTemplateDto) {

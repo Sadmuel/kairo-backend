@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -45,6 +46,7 @@ describe('AuthController', () => {
           provide: AuthService,
           useValue: mockAuthService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 

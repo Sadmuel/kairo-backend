@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -12,6 +12,8 @@ import { TodosModule } from './todos/todos.module';
 import { EventsModule } from './events/events.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { TimeBlockTemplatesModule } from './time-block-templates/time-block-templates.module';
+import { LoggerModule } from './common/logger';
+import { CorrelationIdMiddleware } from './common/middleware';
 import { validate } from './config/env.validation';
 
 @Module({
@@ -48,6 +50,7 @@ import { validate } from './config/env.validation';
         ];
       },
     }),
+    LoggerModule,
     ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
@@ -63,4 +66,8 @@ import { validate } from './config/env.validation';
   controllers: [],
   providers: [],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}

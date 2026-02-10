@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { mockLoggerProvider } from '../common/test/mock-logger';
 import { NotesService } from './notes.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TimeBlocksService } from '../time-blocks/time-blocks.service';
@@ -74,6 +75,7 @@ describe('NotesService', () => {
           provide: TimeBlocksService,
           useValue: mockTimeBlocksService,
         },
+        mockLoggerProvider,
       ],
     }).compile();
 
@@ -277,15 +279,17 @@ describe('NotesService', () => {
     const mockTxClient = {
       note: {
         findUnique: jest.fn(),
+        findMany: jest.fn(),
         delete: jest.fn(),
-        updateMany: jest.fn(),
+        update: jest.fn(),
       },
     };
 
     beforeEach(() => {
       mockTxClient.note.findUnique.mockReset();
+      mockTxClient.note.findMany.mockReset();
       mockTxClient.note.delete.mockReset();
-      mockTxClient.note.updateMany.mockReset();
+      mockTxClient.note.update.mockReset();
       mockPrismaService.$transaction.mockImplementation((callback) => callback(mockTxClient));
     });
 
@@ -293,7 +297,11 @@ describe('NotesService', () => {
       mockPrismaService.note.findFirst.mockResolvedValue(mockNote);
       mockTxClient.note.findUnique.mockResolvedValue(mockNote);
       mockTxClient.note.delete.mockResolvedValue(mockNote);
-      mockTxClient.note.updateMany.mockResolvedValue({ count: 2 });
+      mockTxClient.note.findMany.mockResolvedValue([
+        { id: 'note-200', order: 1 },
+        { id: 'note-300', order: 2 },
+      ]);
+      mockTxClient.note.update.mockResolvedValue({});
 
       await service.remove('note-123', 'user-123');
 
@@ -301,14 +309,22 @@ describe('NotesService', () => {
       expect(mockTxClient.note.delete).toHaveBeenCalledWith({
         where: { id: 'note-123' },
       });
-      expect(mockTxClient.note.updateMany).toHaveBeenCalledWith({
+      expect(mockTxClient.note.findMany).toHaveBeenCalledWith({
         where: {
           timeBlockId: 'tb-123',
           order: { gt: 0 },
         },
-        data: {
-          order: { decrement: 1 },
-        },
+        orderBy: { order: 'asc' },
+        select: { id: true, order: true },
+      });
+      expect(mockTxClient.note.update).toHaveBeenCalledTimes(2);
+      expect(mockTxClient.note.update).toHaveBeenCalledWith({
+        where: { id: 'note-200' },
+        data: { order: 0 },
+      });
+      expect(mockTxClient.note.update).toHaveBeenCalledWith({
+        where: { id: 'note-300' },
+        data: { order: 1 },
       });
     });
 
