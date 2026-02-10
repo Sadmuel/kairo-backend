@@ -116,11 +116,7 @@ export class DemoSeedService {
     }
   }
 
-  private async seedEvents(
-    tx: TransactionClient,
-    userId: string,
-    today: Date,
-  ): Promise<void> {
+  private async seedEvents(tx: TransactionClient, userId: string, today: Date): Promise<void> {
     const events: Prisma.EventCreateManyInput[] = [
       {
         title: 'Team Standup',
@@ -167,10 +163,7 @@ export class DemoSeedService {
     await tx.event.createMany({ data: events });
   }
 
-  private async seedInboxTodos(
-    tx: TransactionClient,
-    userId: string,
-  ): Promise<void> {
+  private async seedInboxTodos(tx: TransactionClient, userId: string): Promise<void> {
     await tx.todo.createMany({
       data: [
         {
@@ -220,10 +213,7 @@ export class DemoSeedService {
           { title: 'Write unit tests', isCompleted: false },
           { title: 'Update documentation', isCompleted: false },
         ],
-        notes: [
-          'Focus on the authentication module first',
-          'Check PR feedback from yesterday',
-        ],
+        notes: ['Focus on the authentication module first', 'Check PR feedback from yesterday'],
       },
       {
         name: 'Lunch & Recharge',
@@ -283,9 +273,7 @@ export class DemoSeedService {
           endTime: '18:00',
           color: '#FCC2D7',
           isCompleted: true,
-          todos: [
-            { title: '5km run', isCompleted: true },
-          ],
+          todos: [{ title: '5km run', isCompleted: true }],
           notes: [],
         },
       ],
@@ -296,9 +284,7 @@ export class DemoSeedService {
           endTime: '07:00',
           color: '#B2F2BB',
           isCompleted: true,
-          todos: [
-            { title: 'Review daily goals', isCompleted: true },
-          ],
+          todos: [{ title: 'Review daily goals', isCompleted: true }],
           notes: [],
         },
         {
@@ -345,9 +331,7 @@ export class DemoSeedService {
           endTime: '20:00',
           color: '#FFEC99',
           isCompleted: true,
-          todos: [
-            { title: 'Read 30 pages', isCompleted: true },
-          ],
+          todos: [{ title: 'Read 30 pages', isCompleted: true }],
           notes: ['Clean Code by Robert C. Martin'],
         },
       ],
@@ -358,9 +342,7 @@ export class DemoSeedService {
           endTime: '07:00',
           color: '#B2F2BB',
           isCompleted: true,
-          todos: [
-            { title: 'Review daily goals', isCompleted: true },
-          ],
+          todos: [{ title: 'Review daily goals', isCompleted: true }],
           notes: [],
         },
         {
@@ -408,9 +390,7 @@ export class DemoSeedService {
           endTime: '18:00',
           color: '#FCC2D7',
           isCompleted: true,
-          todos: [
-            { title: 'Gym workout', isCompleted: true },
-          ],
+          todos: [{ title: 'Gym workout', isCompleted: true }],
           notes: [],
         },
       ],
@@ -445,9 +425,7 @@ export class DemoSeedService {
           endTime: '16:30',
           color: '#D0BFFF',
           isCompleted: true,
-          todos: [
-            { title: 'Watch system design lecture', isCompleted: true },
-          ],
+          todos: [{ title: 'Watch system design lecture', isCompleted: true }],
           notes: ['Covered caching strategies'],
         },
       ],

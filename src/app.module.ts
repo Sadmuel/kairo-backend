@@ -11,6 +11,7 @@ import { NotesModule } from './notes/notes.module';
 import { TodosModule } from './todos/todos.module';
 import { EventsModule } from './events/events.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { TimeBlockTemplatesModule } from './time-block-templates/time-block-templates.module';
 import { validate } from './config/env.validation';
 
 @Module({
@@ -57,6 +58,7 @@ import { validate } from './config/env.validation';
     TodosModule,
     EventsModule,
     DashboardModule,
+    TimeBlockTemplatesModule,
   ],
   controllers: [],
   providers: [],

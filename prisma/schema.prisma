@@ -19,10 +19,11 @@ model User {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  days          Day[]
-  events        Event[]
-  todos         Todo[]
-  refreshTokens RefreshToken[]
+  days               Day[]
+  events             Event[]
+  todos              Todo[]
+  refreshTokens      RefreshToken[]
+  timeBlockTemplates TimeBlockTemplate[]
 
   @@index([isDemoUser, createdAt])
 }
@@ -65,12 +66,14 @@ model TimeBlock {
   color         String?
   nextNoteOrder Int      @default(0)
   dayId         String
+  templateId    String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  day   Day     @relation(fields: [dayId], references: [id], onDelete: Cascade)
-  notes Note[]
-  todos Todo[]
+  day      Day                @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  template TimeBlockTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  notes    Note[]
+  todos    Todo[]
 
   @@unique([dayId, order])
 }
@@ -127,4 +130,49 @@ enum RecurrenceType {
   WEEKLY
   MONTHLY
   YEARLY
+}
+
+model TimeBlockTemplate {
+  id          String    @id @default(uuid())
+  name        String
+  startTime   String
+  endTime     String
+  color       String?
+  daysOfWeek  Int[]
+  isActive    Boolean   @default(true)
+  activeUntil DateTime? @db.Date
+  userId      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user       User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes      TemplateNote[]
+  timeBlocks TimeBlock[]
+  exclusions MaterializationExclusion[]
+
+  @@index([userId, isActive])
+}
+
+model TemplateNote {
+  id         String   @id @default(uuid())
+  content    String
+  order      Int
+  templateId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  template TimeBlockTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, order])
+}
+
+model MaterializationExclusion {
+  id         String   @id @default(uuid())
+  templateId String
+  date       DateTime @db.Date
+  createdAt  DateTime @default(now())
+
+  template TimeBlockTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, date])
 }
